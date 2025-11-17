@@ -3,15 +3,38 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DiscordFakeGameLauncher
 {
+    internal class DetectableApp
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("executables")]
+        public List<AppExecutable>? Executables { get; set; }
+    }
+
+    internal class AppExecutable
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("os")]
+        public string? Os { get; set; }
+
+        [JsonPropertyName("is_launcher")]
+        public bool IsLauncher { get; set; }
+    }
+
     internal static class Program
     {
-        // Regex to find ".exe" names inside Discord's LevelDB/log files
-        private static readonly Regex ExeRegex =
-            new(@"[A-Za-z0-9_\-\.]+\.exe", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private const string GameListFileName = "gamelist.json";
 
         static void Main(string[] args)
         {
@@ -40,19 +63,15 @@ namespace DiscordFakeGameLauncher
             }
         }
 
-        /// <summary>
-        /// Determines if this process is running as a dummy game exe.
-        /// For that we simply check if the path contains "\games\" segment.
-        /// </summary>
         private static bool IsRunningAsFakeGame(string exePath)
         {
             string marker = Path.DirectorySeparatorChar + "games" + Path.DirectorySeparatorChar;
             return exePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        /// <summary>
-        /// Fake game mode: just sit here so Discord thinks the game is running.
-        /// </summary>
+        // ───────────────────────────────────────────────────────────
+        // Fake game mode
+        // ───────────────────────────────────────────────────────────
         private static void RunAsFakeGame(string exePath)
         {
             string gameExeName = Path.GetFileName(exePath);
@@ -60,49 +79,85 @@ namespace DiscordFakeGameLauncher
 
             Console.Title = $"Fake Game: {gameName}";
             Console.WriteLine($"Fake game process running as \"{gameExeName}\".");
-            Console.WriteLine("Discord should detect this as a verified / registered game.");
-            Console.WriteLine();
+            Console.WriteLine("Discord should detect this as a verified / detectable game.\n");
+            Console.WriteLine("Leave this window open for as long as you want the status to show.");
             Console.WriteLine("Press Enter to exit this fake game...");
 
             Console.ReadLine();
         }
 
-        /// <summary>
-        /// Launcher mode: read Discord registered games, let user select one,
-        /// and then create & launch a dummy exe for that game.
-        /// </summary>
+        // ───────────────────────────────────────────────────────────
+        // Launcher mode
+        // ───────────────────────────────────────────────────────────
         private static void RunAsLauncher(string launcherExePath)
         {
             PrintHeader();
 
-            var knownGames = LoadDiscordGames();
-            if (knownGames.Count == 0)
+            string baseDir = AppContext.BaseDirectory;
+            string gameListPath = Path.Combine(baseDir, GameListFileName);
+
+            if (!File.Exists(gameListPath))
             {
-                Console.WriteLine("❌ No .exe names found in Discord's registered games storage.");
-                Console.WriteLine("Make sure Discord is installed, has registered games,");
-                Console.WriteLine("and that you have launched some games via Discord.");
+                Console.WriteLine($"❌ Could not find \"{GameListFileName}\" in:");
+                Console.WriteLine($"   {baseDir}");
+                Console.WriteLine();
+                Console.WriteLine("You need to download Discord's detectable games list:");
+                Console.WriteLine("  1. Open this URL in your browser while logged into Discord:");
+                Console.WriteLine("     https://discord.com/api/applications/detectable");
+                Console.WriteLine("  2. Save the page as \"gamelist.json\" in the same folder as this EXE.");
                 PauseBeforeExit();
                 return;
             }
 
-            Console.WriteLine($"Found {knownGames.Count} .exe names from Discord data.\n");
+            List<DetectableApp> apps;
+            try
+            {
+                string json = File.ReadAllText(gameListPath);
+                apps = JsonSerializer.Deserialize<List<DetectableApp>>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                }) ?? new List<DetectableApp>();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Failed to read/parse {GameListFileName}: {ex.Message}");
+                PauseBeforeExit();
+                return;
+            }
 
-            // Search/filter
-            Console.Write("Enter search text (leave empty to list all): ");
+            var windowsApps = apps
+                .Where(a => !string.IsNullOrWhiteSpace(a.Name)
+                            && a.Executables != null
+                            && a.Executables.Any(e =>
+                                   !string.IsNullOrWhiteSpace(e.Name) &&
+                                   string.Equals(e.Os, "win32", StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(a => a.Name)
+                .ToList();
+
+            if (windowsApps.Count == 0)
+            {
+                Console.WriteLine("❌ No Windows-detectable apps found in gamelist.json.");
+                PauseBeforeExit();
+                return;
+            }
+
+            Console.WriteLine($"Loaded {windowsApps.Count} detectable Windows apps from {GameListFileName}.\n");
+
+            Console.Write("Search by name (empty = list all): ");
             string? search = Console.ReadLine();
             search ??= string.Empty;
 
-            var filtered = FilterGames(knownGames, search);
+            var filtered = FilterByName(windowsApps, search);
 
             if (filtered.Count == 0)
             {
-                Console.WriteLine("No games matched that search.");
+                Console.WriteLine("No apps matched that search.");
                 PauseBeforeExit();
                 return;
             }
 
             Console.WriteLine();
-            PrintGameList(filtered);
+            PrintAppList(filtered);
 
             int index = PromptForIndex(filtered.Count);
             if (index < 0)
@@ -111,17 +166,38 @@ namespace DiscordFakeGameLauncher
                 return;
             }
 
-            string selectedExeName = filtered[index];
+            var selectedApp = filtered[index];
+            var selectedExe = PickBestExecutable(selectedApp);
+
+            if (selectedExe == null || string.IsNullOrWhiteSpace(selectedExe.Name))
+            {
+                Console.WriteLine("❌ Selected app has no usable Windows executable entry.");
+                PauseBeforeExit();
+                return;
+            }
 
             Console.WriteLine();
-            Console.WriteLine($"Selected: {selectedExeName}");
+            Console.WriteLine($"Selected: {selectedApp.Name}");
+            Console.WriteLine($"Executable entry: {selectedExe.Name}");
 
-            string gamesRoot = Path.Combine(AppContext.BaseDirectory, "games");
-            string selectedFolderName = Path.GetFileNameWithoutExtension(selectedExeName) ?? "UnknownGame";
-            string gameFolder = Path.Combine(gamesRoot, selectedFolderName);
+            // Build folder structure:
+            // games/<app-id>/<relative-path-from-executable-name>
+            string gamesRoot = Path.Combine(baseDir, "games");
+            string appId = string.IsNullOrWhiteSpace(selectedApp.Id)
+                ? SanitizeFolderName(selectedApp.Name ?? "UnknownApp")
+                : selectedApp.Id;
+
+            // exec name is like "apex/r5apex.exe"
+            string exeRelPath = selectedExe.Name.Replace('/', Path.DirectorySeparatorChar)
+                                               .Replace('\\', Path.DirectorySeparatorChar);
+
+            string exeFolderPart = Path.GetDirectoryName(exeRelPath) ?? string.Empty;
+            string exeFileName = Path.GetFileName(exeRelPath);
+
+            string gameFolder = Path.Combine(gamesRoot, appId, exeFolderPart);
             Directory.CreateDirectory(gameFolder);
 
-            string dummyExePath = Path.Combine(gameFolder, selectedExeName);
+            string dummyExePath = Path.Combine(gameFolder, exeFileName);
 
             if (!File.Exists(dummyExePath))
             {
@@ -150,7 +226,7 @@ namespace DiscordFakeGameLauncher
                 var psi = new ProcessStartInfo(dummyExePath)
                 {
                     UseShellExecute = false,
-                    WorkingDirectory = Path.GetDirectoryName(dummyExePath) ?? AppContext.BaseDirectory
+                    WorkingDirectory = gameFolder
                 };
 
                 Process.Start(psi);
@@ -170,9 +246,9 @@ namespace DiscordFakeGameLauncher
             Console.WriteLine("============================================");
             Console.WriteLine("     Discord Fake Game Launcher");
             Console.WriteLine("============================================");
-            Console.WriteLine("This app reads Discord's registered games,");
-            Console.WriteLine("then creates tiny dummy executables in ./games/");
-            Console.WriteLine("with the same .exe names so Discord detects them.");
+            Console.WriteLine("Uses Discord's detectable apps list (gamelist.json)");
+            Console.WriteLine("to create dummy executables in ./games/ that");
+            Console.WriteLine("Discord will detect as verified games.");
             Console.WriteLine();
         }
 
@@ -183,89 +259,32 @@ namespace DiscordFakeGameLauncher
             Console.ReadLine();
         }
 
-        /// <summary>
-        /// Reads Discord's LevelDB/log files and extracts .exe names.
-        /// </summary>
-        private static List<string> LoadDiscordGames()
-        {
-            var result = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string discordLevelDbPath = Path.Combine(appData, "discord", "Local Storage", "leveldb");
-
-            if (!Directory.Exists(discordLevelDbPath))
-            {
-                Console.WriteLine($"Discord LevelDB folder not found at:");
-                Console.WriteLine(discordLevelDbPath);
-                return result.ToList();
-            }
-
-            IEnumerable<string> files;
-            try
-            {
-                files = Directory.EnumerateFiles(discordLevelDbPath, "*.*", SearchOption.TopDirectoryOnly)
-                                 .Where(f => f.EndsWith(".ldb", StringComparison.OrdinalIgnoreCase)
-                                             || f.EndsWith(".log", StringComparison.OrdinalIgnoreCase));
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error reading LevelDB folder: {ex.Message}");
-                return result.ToList();
-            }
-
-            foreach (var file in files)
-            {
-                string content;
-                try
-                {
-                    content = File.ReadAllText(file);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                foreach (Match match in ExeRegex.Matches(content))
-                {
-                    string exeName = match.Value;
-
-                    // Ignore Discord's own binaries
-                    if (exeName.Equals("Discord.exe", StringComparison.OrdinalIgnoreCase) ||
-                        exeName.StartsWith("discord", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    result.Add(exeName);
-                }
-            }
-
-            return result.ToList();
-        }
-
-        private static List<string> FilterGames(List<string> games, string search)
+        private static List<DetectableApp> FilterByName(List<DetectableApp> apps, string search)
         {
             if (string.IsNullOrWhiteSpace(search))
-                return games.ToList();
+                return apps.ToList();
 
-            return games
-                .Where(g => g.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+            return apps
+                .Where(a => (a.Name ?? string.Empty)
+                    .IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
                 .ToList();
         }
 
-        private static void PrintGameList(List<string> games)
+        private static void PrintAppList(List<DetectableApp> apps)
         {
-            Console.WriteLine("Games:");
-            for (int i = 0; i < games.Count; i++)
+            Console.WriteLine("Apps:");
+            for (int i = 0; i < apps.Count; i++)
             {
-                Console.WriteLine($"[{i}] {games[i]}");
+                string name = apps[i].Name ?? "(unnamed)";
+                string id = apps[i].Id ?? "?";
+                Console.WriteLine($"[{i}] {name} (id: {id})");
             }
         }
 
         private static int PromptForIndex(int max)
         {
             Console.WriteLine();
-            Console.Write("Enter game index to launch (or just press Enter to cancel): ");
+            Console.Write("Enter index to launch (or press Enter to cancel): ");
             string? input = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(input))
@@ -284,6 +303,29 @@ namespace DiscordFakeGameLauncher
             }
 
             return index;
+        }
+
+        private static AppExecutable? PickBestExecutable(DetectableApp app)
+        {
+            var exes = app.Executables ?? new List<AppExecutable>();
+
+            // prefer non-launcher win32, then any win32
+            var best = exes.FirstOrDefault(e =>
+                           string.Equals(e.Os, "win32", StringComparison.OrdinalIgnoreCase)
+                           && !e.IsLauncher)
+                       ?? exes.FirstOrDefault(e =>
+                           string.Equals(e.Os, "win32", StringComparison.OrdinalIgnoreCase));
+
+            return best;
+        }
+
+        private static string SanitizeFolderName(string name)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                name = name.Replace(c, '_');
+            }
+            return name;
         }
     }
 }
