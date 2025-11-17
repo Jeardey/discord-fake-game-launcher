@@ -1,0 +1,8 @@
+```gitignore
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.vs/
+.vscode/
