@@ -63,6 +63,10 @@ namespace DiscordFakeGameLauncher
             }
         }
 
+        /// <summary>
+        /// Determines if this process is running as a dummy game exe.
+        /// Just checks if the path contains "\games\".
+        /// </summary>
         private static bool IsRunningAsFakeGame(string exePath)
         {
             string marker = Path.DirectorySeparatorChar + "games" + Path.DirectorySeparatorChar;
@@ -187,7 +191,7 @@ namespace DiscordFakeGameLauncher
                 ? SanitizeFolderName(selectedApp.Name ?? "UnknownApp")
                 : selectedApp.Id;
 
-            // exec name is like "apex/r5apex.exe"
+            // exec name is like "apex/r5apex.exe" or "win64/cs2.exe"
             string exeRelPath = selectedExe.Name.Replace('/', Path.DirectorySeparatorChar)
                                                .Replace('\\', Path.DirectorySeparatorChar);
 
@@ -201,10 +205,36 @@ namespace DiscordFakeGameLauncher
 
             if (!File.Exists(dummyExePath))
             {
-                Console.WriteLine("Creating dummy exe...");
+                Console.WriteLine("Creating dummy exe and support files...");
+
                 try
                 {
+                    // 1) Copy the launcher EXE itself, renamed as the target exe (cs2.exe, etc.)
                     File.Copy(launcherExePath, dummyExePath, overwrite: false);
+
+                    // 2) Copy the main DLL and runtime files into the same folder as the dummy exe
+                    string sourceDir = Path.GetDirectoryName(launcherExePath)
+                                       ?? AppContext.BaseDirectory;
+                    string baseName = Path.GetFileNameWithoutExtension(launcherExePath)
+                                      ?? "DiscordFakeGameLauncher";
+
+                    // Copy DiscordFakeGameLauncher.dll + .runtimeconfig.json + .deps.json etc.
+                    foreach (var file in Directory.GetFiles(sourceDir, baseName + ".*"))
+                    {
+                        string fileName = Path.GetFileName(file);
+
+                        // We already placed the renamed exe, no need to copy the original exe
+                        if (fileName.Equals(Path.GetFileName(launcherExePath),
+                                            StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string destPath = Path.Combine(gameFolder, fileName);
+
+                        if (!File.Exists(destPath))
+                        {
+                            File.Copy(file, destPath);
+                        }
+                    }
                 }
                 catch (IOException ioEx)
                 {
@@ -309,7 +339,7 @@ namespace DiscordFakeGameLauncher
         {
             var exes = app.Executables ?? new List<AppExecutable>();
 
-            // prefer non-launcher win32, then any win32
+            // Prefer non-launcher win32, then any win32
             var best = exes.FirstOrDefault(e =>
                            string.Equals(e.Os, "win32", StringComparison.OrdinalIgnoreCase)
                            && !e.IsLauncher)
