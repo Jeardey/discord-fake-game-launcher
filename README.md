@@ -7,11 +7,8 @@ Can be used for completing Discord Quests without installing the game.
 
 ## How it works
 
-- Reads Discord's registered games from:
-
-  `%AppData%\discord\Local Storage\leveldb`
-
-- Scans those files for `.exe` names.
+- Reads Discord's registered games from the gamelist.json
+- Scans file for `.exe` names.
 - Lets you search and pick one.
 - Creates a dummy exe in:
 
