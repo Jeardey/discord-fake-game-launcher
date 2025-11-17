@@ -23,7 +23,7 @@ Can be used for completing Discord Quests without installing the game.
 The same executable acts as:
 
 - **Launcher** when run from the root folder.
-- **Fake game** when run from a subfolder inside `games/`..
+- **Fake game** when run from a subfolder inside `games/`.
 
 ## Build
 
