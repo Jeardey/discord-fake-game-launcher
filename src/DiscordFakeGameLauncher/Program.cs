@@ -42,7 +42,7 @@ namespace DiscordFakeGameLauncher
 
             if (IsRunningAsFakeGame(exePath))
             {
-                RunAsFakeGame(exePath);
+                RunAsFakeGame(exePath, args);
             }
             else
             {
@@ -76,15 +76,22 @@ namespace DiscordFakeGameLauncher
         // ───────────────────────────────────────────────────────────
         // Fake game mode
         // ───────────────────────────────────────────────────────────
-        private static void RunAsFakeGame(string exePath)
+        private static void RunAsFakeGame(string exePath, string[] args)
         {
             string gameExeName = Path.GetFileName(exePath);
             string gameName = Path.GetFileNameWithoutExtension(exePath);
 
-            Console.Title = $"Fake Game: {gameName}";
-            Console.WriteLine($"Fake game process running as \"{gameExeName}\".");
-            Console.WriteLine("Discord should detect this as a verified / detectable game.\n");
-            Console.WriteLine("Leave this window open for as long as you want the status to show.");
+            // If launcher passed a friendly name, use that for the window title
+            string displayName = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
+                ? args[0]
+                : gameName;
+
+            Console.Title = displayName;
+
+            Console.WriteLine($"Game: {displayName}");
+            Console.WriteLine($"Process image name: {gameExeName}");
+            Console.WriteLine();
+            Console.WriteLine("Leave this window open for as long as you want Discord to think the game is running.");
             Console.WriteLine("Press Enter to exit this fake game...");
 
             Console.ReadLine();
@@ -218,12 +225,11 @@ namespace DiscordFakeGameLauncher
                     string baseName = Path.GetFileNameWithoutExtension(launcherExePath)
                                       ?? "DiscordFakeGameLauncher";
 
-                    // Copy DiscordFakeGameLauncher.dll + .runtimeconfig.json + .deps.json etc.
                     foreach (var file in Directory.GetFiles(sourceDir, baseName + ".*"))
                     {
                         string fileName = Path.GetFileName(file);
 
-                        // We already placed the renamed exe, no need to copy the original exe
+                        // We already placed the renamed exe; skip copying original exe again
                         if (fileName.Equals(Path.GetFileName(launcherExePath),
                                             StringComparison.OrdinalIgnoreCase))
                             continue;
@@ -259,6 +265,10 @@ namespace DiscordFakeGameLauncher
                     WorkingDirectory = gameFolder
                 };
 
+                // Pass the friendly game name as an argument so the fake exe can show it
+                string displayName = selectedApp.Name ?? exeFileName;
+                psi.ArgumentList.Add(displayName);
+
                 Process.Start(psi);
                 Console.WriteLine("✅ Fake game launched. Check Discord's status / activity.");
             }
@@ -278,7 +288,7 @@ namespace DiscordFakeGameLauncher
             Console.WriteLine("============================================");
             Console.WriteLine("Uses Discord's detectable apps list (gamelist.json)");
             Console.WriteLine("to create dummy executables in ./games/ that");
-            Console.WriteLine("Discord will detect as verified games.");
+            Console.WriteLine("Discord will detect as verified games (if supported).");
             Console.WriteLine();
         }
 
