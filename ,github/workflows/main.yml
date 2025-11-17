@@ -2,9 +2,7 @@ name: .NET Build
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   build:
@@ -33,3 +31,4 @@ jobs:
         with:
           name: DiscordFakeGameLauncher
           path: publish
+
