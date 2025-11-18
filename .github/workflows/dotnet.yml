@@ -18,7 +18,9 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore ./src/Launcher/Launcher.csproj
+        run: |
+          dotnet restore ./src/DummyGame/DummyGame.csproj
+          dotnet restore ./src/Launcher/Launcher.csproj
 
       - name: Build
         run: |
@@ -27,8 +29,8 @@ jobs:
 
       - name: Publish (both, framework-dependent)
         run: |
-          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./publish
-          dotnet publish ./src/Launcher/Launcher.csproj  -c Release -o ./publish
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./publish --no-restore
+          dotnet publish ./src/Launcher/Launcher.csproj  -c Release -o ./publish --no-restore
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
