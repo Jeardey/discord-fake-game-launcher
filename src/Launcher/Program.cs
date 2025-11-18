@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,19 +36,15 @@ namespace DiscordFakeGameLauncher
     internal static class Program
     {
         private const string GameListFileName = "gamelist.json";
+        private const string DummyGameExeName = "DummyGame.exe";   // template GUI exe
 
         static void Main(string[] args)
         {
             string exePath = GetCurrentExePath();
 
-            if (IsRunningAsFakeGame(exePath))
-            {
-                RunAsFakeGame(exePath, args);
-            }
-            else
-            {
-                RunAsLauncher(exePath);
-            }
+            // Launcher never runs as dummy (we use a separate DummyGame exe),
+            // so we always run as launcher here.
+            RunAsLauncher(exePath);
         }
 
         private static string GetCurrentExePath()
@@ -63,40 +60,6 @@ namespace DiscordFakeGameLauncher
             }
         }
 
-        /// <summary>
-        /// Determines if this process is running as a dummy game exe.
-        /// Just checks if the path contains "\games\".
-        /// </summary>
-        private static bool IsRunningAsFakeGame(string exePath)
-        {
-            string marker = Path.DirectorySeparatorChar + "games" + Path.DirectorySeparatorChar;
-            return exePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        // ───────────────────────────────────────────────────────────
-        // Fake game mode
-        // ───────────────────────────────────────────────────────────
-        private static void RunAsFakeGame(string exePath, string[] args)
-        {
-            string gameExeName = Path.GetFileName(exePath);
-            string gameName = Path.GetFileNameWithoutExtension(exePath);
-
-            // If launcher passed a friendly name, use that for the window title
-            string displayName = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
-                ? args[0]
-                : gameName;
-
-            Console.Title = displayName;
-
-            Console.WriteLine($"Game: {displayName}");
-            Console.WriteLine($"Process image name: {gameExeName}");
-            Console.WriteLine();
-            Console.WriteLine("Leave this window open for as long as you want Discord to think the game is running.");
-            Console.WriteLine("Press Enter to exit this fake game...");
-
-            Console.ReadLine();
-        }
-
         // ───────────────────────────────────────────────────────────
         // Launcher mode
         // ───────────────────────────────────────────────────────────
@@ -107,15 +70,29 @@ namespace DiscordFakeGameLauncher
             string baseDir = AppContext.BaseDirectory;
             string gameListPath = Path.Combine(baseDir, GameListFileName);
 
+            // Auto-download gamelist.json on first run
             if (!File.Exists(gameListPath))
             {
-                Console.WriteLine($"❌ Could not find \"{GameListFileName}\" in:");
+                Console.WriteLine($"\"{GameListFileName}\" not found. Downloading from Discord API...");
+                if (!TryDownloadGameList(gameListPath))
+                {
+                    Console.WriteLine("❌ Auto-download failed.");
+                    Console.WriteLine("You can manually download it from:");
+                    Console.WriteLine("  https://discord.com/api/applications/detectable");
+                    Console.WriteLine($"and save as \"{GameListFileName}\" next to this EXE.");
+                    PauseBeforeExit();
+                    return;
+                }
+                Console.WriteLine("✅ Downloaded gamelist.json.\n");
+            }
+
+            // Ensure dummy template exists
+            string dummySourceExe = Path.Combine(baseDir, DummyGameExeName);
+            if (!File.Exists(dummySourceExe))
+            {
+                Console.WriteLine($"❌ Could not find dummy template exe \"{DummyGameExeName}\" in:");
                 Console.WriteLine($"   {baseDir}");
-                Console.WriteLine();
-                Console.WriteLine("You need to download Discord's detectable games list:");
-                Console.WriteLine("  1. Open this URL in your browser while logged into Discord:");
-                Console.WriteLine("     https://discord.com/api/applications/detectable");
-                Console.WriteLine("  2. Save the page as \"gamelist.json\" in the same folder as this EXE.");
+                Console.WriteLine("Make sure you copied DummyGame.exe next to the launcher.");
                 PauseBeforeExit();
                 return;
             }
@@ -212,25 +189,24 @@ namespace DiscordFakeGameLauncher
 
             if (!File.Exists(dummyExePath))
             {
-                Console.WriteLine("Creating dummy exe and support files...");
+                Console.WriteLine("Creating dummy GUI exe and support files...");
 
                 try
                 {
-                    // 1) Copy the launcher EXE itself, renamed as the target exe (cs2.exe, etc.)
-                    File.Copy(launcherExePath, dummyExePath, overwrite: false);
+                    // 1) Copy DummyGame.exe, but rename to the real game's exe name
+                    File.Copy(dummySourceExe, dummyExePath, overwrite: false);
 
-                    // 2) Copy the main DLL and runtime files into the same folder as the dummy exe
-                    string sourceDir = Path.GetDirectoryName(launcherExePath)
-                                       ?? AppContext.BaseDirectory;
-                    string baseName = Path.GetFileNameWithoutExtension(launcherExePath)
-                                      ?? "DiscordFakeGameLauncher";
+                    // 2) Copy DummyGame.* sidecar files (DLL, runtimeconfig, deps, etc.)
+                    string sourceDir = Path.GetDirectoryName(dummySourceExe)
+                                       ?? baseDir;
+                    string dummyBaseName = Path.GetFileNameWithoutExtension(dummySourceExe) ?? "DummyGame";
 
-                    foreach (var file in Directory.GetFiles(sourceDir, baseName + ".*"))
+                    foreach (var file in Directory.GetFiles(sourceDir, dummyBaseName + ".*"))
                     {
                         string fileName = Path.GetFileName(file);
 
-                        // We already placed the renamed exe; skip copying original exe again
-                        if (fileName.Equals(Path.GetFileName(launcherExePath),
+                        // We already placed the renamed exe
+                        if (fileName.Equals(Path.GetFileName(dummySourceExe),
                                             StringComparison.OrdinalIgnoreCase))
                             continue;
 
@@ -259,13 +235,15 @@ namespace DiscordFakeGameLauncher
 
             try
             {
+                // IMPORTANT:
+                // - exe name == real game exe (dummyExePath)
+                // - window title (from DummyGame) == selectedApp.Name (different from exe)
                 var psi = new ProcessStartInfo(dummyExePath)
                 {
                     UseShellExecute = false,
                     WorkingDirectory = gameFolder
                 };
 
-                // Pass the friendly game name as an argument so the fake exe can show it
                 string displayName = selectedApp.Name ?? exeFileName;
                 psi.ArgumentList.Add(displayName);
 
@@ -280,15 +258,41 @@ namespace DiscordFakeGameLauncher
             PauseBeforeExit();
         }
 
+        // ───────────────────────────────────────────────────────────
+        // Helpers
+        // ───────────────────────────────────────────────────────────
+
+        private static bool TryDownloadGameList(string destPath)
+        {
+            try
+            {
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("DiscordFakeGameLauncher/1.0");
+
+                // Discord detectable apps API
+                const string url = "https://discord.com/api/applications/detectable";
+
+                string json = client.GetStringAsync(url).GetAwaiter().GetResult();
+                File.WriteAllText(destPath, json);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading gamelist: {ex.Message}");
+                return false;
+            }
+        }
+
         private static void PrintHeader()
         {
             Console.Title = "Discord Fake Game Launcher";
             Console.WriteLine("============================================");
             Console.WriteLine("     Discord Fake Game Launcher");
             Console.WriteLine("============================================");
-            Console.WriteLine("Uses Discord's detectable apps list (gamelist.json)");
-            Console.WriteLine("to create dummy executables in ./games/ that");
-            Console.WriteLine("Discord will detect as verified games (if supported).");
+            Console.WriteLine("Console launcher that uses Discord's detectable apps list");
+            Console.WriteLine("and spawns a GUI dummy process with:");
+            Console.WriteLine("- exe name == real game exe");
+            Console.WriteLine("- window title == game name (different from exe)");
             Console.WriteLine();
         }
 

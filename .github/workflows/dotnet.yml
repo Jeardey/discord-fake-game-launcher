@@ -2,9 +2,7 @@ name: .NET Build
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   build:
@@ -19,14 +17,18 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore dependencies
-        run: dotnet restore ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj
+      - name: Restore
+        run: dotnet restore ./src/Launcher/Launcher.csproj
 
       - name: Build
-        run: dotnet build ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj --configuration Release --no-restore
+        run: |
+          dotnet build ./src/DummyGame/DummyGame.csproj --configuration Release --no-restore
+          dotnet build ./src/Launcher/Launcher.csproj  --configuration Release --no-restore
 
-      - name: Publish (self-contained, win-x64)
-        run: dotnet publish ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj -c Release -o ./publish --no-restore
+      - name: Publish (both, framework-dependent)
+        run: |
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./publish
+          dotnet publish ./src/Launcher/Launcher.csproj  -c Release -o ./publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
