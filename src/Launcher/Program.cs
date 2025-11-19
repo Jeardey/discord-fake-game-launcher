@@ -75,15 +75,12 @@ namespace DiscordFakeGameLauncher
         // Set this to your current release tag (without leading "v")
         private const string CurrentVersion = "0.1.0";
 
-        // How old gamelist.json can be before we refresh it
-        private const int GameListMaxAgeDays = 7;
-
         private static readonly HttpClient Http = CreateHttpClient();
 
         static void Main(string[] args)
         {
-            string exePath    = GetCurrentExePath();
-            string baseDir    = AppContext.BaseDirectory;
+            string exePath     = GetCurrentExePath();
+            string baseDir     = AppContext.BaseDirectory;
             string exeFileName = Path.GetFileName(exePath);
 
             PrintHeader(baseDir);
@@ -91,8 +88,8 @@ namespace DiscordFakeGameLauncher
             // 1) Auto-update launcher if needed (this may exit and restart)
             TryCheckForLauncherUpdate(baseDir, exeFileName);
 
-            // 2) Make sure gamelist.json exists and is fresh enough
-            EnsureFreshGameList(baseDir);
+            // 2) Sync gamelist.json with Discord API every launch
+            SyncGameListWithDiscord(baseDir);
 
             // 3) Run the normal launcher flow
             RunAsLauncher(baseDir);
@@ -102,7 +99,7 @@ namespace DiscordFakeGameLauncher
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.UserAgent.ParseAdd("DiscordFakeGameLauncher/1.0");
-            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
             client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
             return client;
         }
@@ -253,63 +250,86 @@ del ""%~f0""
         }
 
         // ───────────────────────────────────────────────────────────
-        // gamelist.json freshness
+        // gamelist.json – always synced with Discord API
         // ───────────────────────────────────────────────────────────
-        private static void EnsureFreshGameList(string baseDir)
+        private static void SyncGameListWithDiscord(string baseDir)
         {
             string path = Path.Combine(baseDir, GameListFileName);
 
-            bool needDownload = false;
-
-            if (!File.Exists(path))
-            {
-                Console.WriteLine($"\"{GameListFileName}\" not found. Will download from Discord API.");
-                needDownload = true;
-            }
-            else
-            {
-                try
-                {
-                    var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(path);
-                    if (age.TotalDays > GameListMaxAgeDays)
-                    {
-                        Console.WriteLine($"\"{GameListFileName}\" is older than {GameListMaxAgeDays} days. Refreshing...");
-                        needDownload = true;
-                    }
-                }
-                catch
-                {
-                    needDownload = true;
-                }
-            }
-
-            if (needDownload)
-            {
-                if (TryDownloadGameList(path))
-                    Console.WriteLine("✅ gamelist.json updated.\n");
-                else
-                    Console.WriteLine("❌ Failed to update gamelist.json. Using existing file if available.\n");
-            }
-            else
-            {
-                Console.WriteLine($"Using existing \"{GameListFileName}\" (fresh enough).\n");
-            }
-        }
-
-        private static bool TryDownloadGameList(string destPath)
-        {
             try
             {
+                Console.WriteLine("Syncing gamelist.json with Discord API...");
+
                 const string url = "https://discord.com/api/applications/detectable";
-                string json = Http.GetStringAsync(url).GetAwaiter().GetResult();
-                File.WriteAllText(destPath, json);
-                return true;
+                string remoteJson = Http.GetStringAsync(url).GetAwaiter().GetResult();
+
+                // Normalize by trimming – Discord will return identical JSON for unchanged data
+                string remoteTrimmed = remoteJson.Trim();
+                string? localTrimmed = null;
+
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        localTrimmed = File.ReadAllText(path).Trim();
+                    }
+                    catch
+                    {
+                        localTrimmed = null;
+                    }
+                }
+
+                if (localTrimmed == null || !string.Equals(localTrimmed, remoteTrimmed, StringComparison.Ordinal))
+                {
+                    // Optional backup
+                    if (localTrimmed != null)
+                    {
+                        try
+                        {
+                            File.Copy(path, path + ".bak", overwrite: true);
+                        }
+                        catch
+                        {
+                            // ignore backup errors
+                        }
+                    }
+
+                    File.WriteAllText(path, remoteJson);
+                    Console.WriteLine("✅ gamelist.json updated from Discord API.\n");
+                }
+                else
+                {
+                    Console.WriteLine("gamelist.json is already up-to-date with Discord API.\n");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error downloading gamelist: {ex.Message}");
-                return false;
+                Console.WriteLine($"⚠ Could not sync gamelist.json with Discord API: {ex.Message}");
+
+                if (!File.Exists(path))
+                {
+                    Console.WriteLine("❌ No local gamelist.json available; cannot continue.");
+                    PauseBeforeExit();
+                    Environment.Exit(1);
+                }
+                else
+                {
+                    Console.WriteLine("Using existing local gamelist.json.\n");
+                }
             }
+        }
+
+        private static List<DetectableApp> LoadDetectableApps(string baseDir)
+        {
+            string gameListPath = Path.Combine(baseDir, GameListFileName);
+
+            string json = File.ReadAllText(gameListPath);
+            var apps = JsonSerializer.Deserialize<List<DetectableApp>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<DetectableApp>();
+
+            return apps;
         }
 
         // ───────────────────────────────────────────────────────────
@@ -333,11 +353,7 @@ del ""%~f0""
             List<DetectableApp> apps;
             try
             {
-                string json = File.ReadAllText(gameListPath);
-                apps = JsonSerializer.Deserialize<List<DetectableApp>>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                }) ?? new List<DetectableApp>();
+                apps = LoadDetectableApps(baseDir);
             }
             catch (Exception ex)
             {
@@ -362,7 +378,7 @@ del ""%~f0""
                 return;
             }
 
-            Console.WriteLine($"Loaded {windowsApps.Count} detectable Windows apps from {GameListFileName}.\n");
+            Console.WriteLine($"Loaded {windowsApps.Count} detectable Windows apps from gamelist.json.\n");
 
             Console.Write("Search by name (empty = list all): ");
             string? search = Console.ReadLine();
@@ -518,7 +534,7 @@ del ""%~f0""
             Console.WriteLine("     Discord Fake Game Launcher");
             Console.WriteLine("============================================");
             Console.WriteLine($"Current version (local): {shownVersion}");
-            Console.WriteLine("Auto-updates from GitHub releases & keeps gamelist.json fresh.");
+            Console.WriteLine("Auto-updates from GitHub releases & syncs gamelist.json with Discord API.");
             Console.WriteLine();
         }
 
