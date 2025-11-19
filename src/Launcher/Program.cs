@@ -65,12 +65,14 @@ namespace DiscordFakeGameLauncher
         // ───────────────────────────────────────────────────────────
         private const string GameListFileName = "gamelist.json";
         private const string DummyGameExeName = "DummyGame.exe";   // template GUI exe
+        private const string VersionFileName  = "version.txt";
 
         // GitHub repo for auto-updates
         private const string RepoOwner = "Jeardey";
         private const string RepoName  = "discord-fake-game-launcher";
 
-        // Current app version (match your release tag without leading 'v')
+        // Built-in version (fallback if version.txt not present)
+        // Set this to your current release tag (without leading "v")
         private const string CurrentVersion = "0.1.0";
 
         // How old gamelist.json can be before we refresh it
@@ -80,11 +82,11 @@ namespace DiscordFakeGameLauncher
 
         static void Main(string[] args)
         {
-            string exePath = GetCurrentExePath();
-            string baseDir = AppContext.BaseDirectory;
+            string exePath    = GetCurrentExePath();
+            string baseDir    = AppContext.BaseDirectory;
             string exeFileName = Path.GetFileName(exePath);
 
-            PrintHeader();
+            PrintHeader(baseDir);
 
             // 1) Auto-update launcher if needed (this may exit and restart)
             TryCheckForLauncherUpdate(baseDir, exeFileName);
@@ -127,6 +129,24 @@ namespace DiscordFakeGameLauncher
             {
                 Console.WriteLine("Checking for launcher updates...");
 
+                string versionFilePath = Path.Combine(baseDir, VersionFileName);
+
+                // Local version: prefer version.txt, fall back to the compiled constant
+                string localVersion = CurrentVersion;
+                if (File.Exists(versionFilePath))
+                {
+                    try
+                    {
+                        string txt = File.ReadAllText(versionFilePath).Trim();
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            localVersion = txt;
+                    }
+                    catch
+                    {
+                        // ignore, we'll just use CurrentVersion
+                    }
+                }
+
                 string url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
                 string json = Http.GetStringAsync(url).GetAwaiter().GetResult();
 
@@ -145,13 +165,13 @@ namespace DiscordFakeGameLauncher
                 if (latestVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase))
                     latestVersion = latestVersion[1..];
 
-                if (string.Equals(latestVersion, CurrentVersion, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(latestVersion, localVersion, StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine($"You are on the latest version ({CurrentVersion}).\n");
+                    Console.WriteLine($"You are on the latest version ({localVersion}).\n");
                     return;
                 }
 
-                Console.WriteLine($"New version available: {CurrentVersion} → {latestVersion}");
+                Console.WriteLine($"New version available: {localVersion} → {latestVersion}");
                 Console.WriteLine("Downloading and installing update...");
 
                 if (release.Assets == null || release.Assets.Count == 0)
@@ -173,9 +193,9 @@ namespace DiscordFakeGameLauncher
                     return;
                 }
 
-                string updateRoot   = Path.Combine(baseDir, "_update");
-                string updateZip    = Path.Combine(updateRoot, "update.zip");
-                string extractDir   = Path.Combine(updateRoot, "new");
+                string updateRoot = Path.Combine(baseDir, "_update");
+                string updateZip  = Path.Combine(updateRoot, "update.zip");
+                string extractDir = Path.Combine(updateRoot, "new");
 
                 if (Directory.Exists(updateRoot))
                     Directory.Delete(updateRoot, recursive: true);
@@ -189,10 +209,19 @@ namespace DiscordFakeGameLauncher
                 // Extract zip
                 ZipFile.ExtractToDirectory(updateZip, extractDir);
 
+                // Save the new version locally so we don't re-update next run
+                try
+                {
+                    File.WriteAllText(versionFilePath, latestVersion);
+                }
+                catch
+                {
+                    // not critical, worst case we re-check next run
+                }
+
                 // Create update script (batch)
                 string batchPath = Path.Combine(updateRoot, "run_update.bat");
 
-                // We copy everything from extractDir over baseDir, then restart launcher, then clean up
                 string batchContent =
 $@"@echo off
 setlocal
@@ -284,7 +313,7 @@ del ""%~f0""
         }
 
         // ───────────────────────────────────────────────────────────
-        // Launcher logic (same as before, but uses fresh gamelist)
+        // Launcher logic
         // ───────────────────────────────────────────────────────────
         private static void RunAsLauncher(string baseDir)
         {
@@ -464,13 +493,31 @@ del ""%~f0""
         // ───────────────────────────────────────────────────────────
         // Helpers
         // ───────────────────────────────────────────────────────────
-        private static void PrintHeader()
+        private static void PrintHeader(string baseDir)
         {
             Console.Title = "Discord Fake Game Launcher";
+
+            string versionFilePath = Path.Combine(baseDir, VersionFileName);
+            string shownVersion = CurrentVersion;
+
+            if (File.Exists(versionFilePath))
+            {
+                try
+                {
+                    string txt = File.ReadAllText(versionFilePath).Trim();
+                    if (!string.IsNullOrWhiteSpace(txt))
+                        shownVersion = txt;
+                }
+                catch
+                {
+                    // ignore, use CurrentVersion
+                }
+            }
+
             Console.WriteLine("============================================");
             Console.WriteLine("     Discord Fake Game Launcher");
             Console.WriteLine("============================================");
-            Console.WriteLine($"Current version: {CurrentVersion}");
+            Console.WriteLine($"Current version (local): {shownVersion}");
             Console.WriteLine("Auto-updates from GitHub releases & keeps gamelist.json fresh.");
             Console.WriteLine();
         }
