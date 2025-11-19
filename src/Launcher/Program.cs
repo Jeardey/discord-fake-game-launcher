@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -33,18 +34,75 @@ namespace DiscordFakeGameLauncher
         public bool IsLauncher { get; set; }
     }
 
+    internal class GitHubAsset
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("browser_download_url")]
+        public string? BrowserDownloadUrl { get; set; }
+    }
+
+    internal class GitHubRelease
+    {
+        [JsonPropertyName("tag_name")]
+        public string? TagName { get; set; }
+
+        [JsonPropertyName("draft")]
+        public bool Draft { get; set; }
+
+        [JsonPropertyName("prerelease")]
+        public bool PreRelease { get; set; }
+
+        [JsonPropertyName("assets")]
+        public List<GitHubAsset>? Assets { get; set; }
+    }
+
     internal static class Program
     {
+        // ───────────────────────────────────────────────────────────
+        // Config
+        // ───────────────────────────────────────────────────────────
         private const string GameListFileName = "gamelist.json";
         private const string DummyGameExeName = "DummyGame.exe";   // template GUI exe
+
+        // GitHub repo for auto-updates
+        private const string RepoOwner = "Jeardey";
+        private const string RepoName  = "discord-fake-game-launcher";
+
+        // Current app version (match your release tag without leading 'v')
+        private const string CurrentVersion = "0.1.0";
+
+        // How old gamelist.json can be before we refresh it
+        private const int GameListMaxAgeDays = 7;
+
+        private static readonly HttpClient Http = CreateHttpClient();
 
         static void Main(string[] args)
         {
             string exePath = GetCurrentExePath();
+            string baseDir = AppContext.BaseDirectory;
+            string exeFileName = Path.GetFileName(exePath);
 
-            // Launcher never runs as dummy (we use a separate DummyGame exe),
-            // so we always run as launcher here.
-            RunAsLauncher(exePath);
+            PrintHeader();
+
+            // 1) Auto-update launcher if needed (this may exit and restart)
+            TryCheckForLauncherUpdate(baseDir, exeFileName);
+
+            // 2) Make sure gamelist.json exists and is fresh enough
+            EnsureFreshGameList(baseDir);
+
+            // 3) Run the normal launcher flow
+            RunAsLauncher(baseDir);
+        }
+
+        private static HttpClient CreateHttpClient()
+        {
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("DiscordFakeGameLauncher/1.0");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+            return client;
         }
 
         private static string GetCurrentExePath()
@@ -61,32 +119,178 @@ namespace DiscordFakeGameLauncher
         }
 
         // ───────────────────────────────────────────────────────────
-        // Launcher mode
+        // Auto-update launcher from GitHub releases
         // ───────────────────────────────────────────────────────────
-        private static void RunAsLauncher(string launcherExePath)
+        private static void TryCheckForLauncherUpdate(string baseDir, string exeFileName)
         {
-            PrintHeader();
-
-            string baseDir = AppContext.BaseDirectory;
-            string gameListPath = Path.Combine(baseDir, GameListFileName);
-
-            // Auto-download gamelist.json on first run
-            if (!File.Exists(gameListPath))
+            try
             {
-                Console.WriteLine($"\"{GameListFileName}\" not found. Downloading from Discord API...");
-                if (!TryDownloadGameList(gameListPath))
+                Console.WriteLine("Checking for launcher updates...");
+
+                string url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
+                string json = Http.GetStringAsync(url).GetAwaiter().GetResult();
+
+                var release = JsonSerializer.Deserialize<GitHubRelease>(json, new JsonSerializerOptions
                 {
-                    Console.WriteLine("❌ Auto-download failed.");
-                    Console.WriteLine("You can manually download it from:");
-                    Console.WriteLine("  https://discord.com/api/applications/detectable");
-                    Console.WriteLine($"and save as \"{GameListFileName}\" next to this EXE.");
-                    PauseBeforeExit();
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (release == null || string.IsNullOrWhiteSpace(release.TagName))
+                {
+                    Console.WriteLine("Could not read latest release info. Continuing with current version.\n");
                     return;
                 }
-                Console.WriteLine("✅ Downloaded gamelist.json.\n");
+
+                string latestVersion = release.TagName.Trim();
+                if (latestVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+                    latestVersion = latestVersion[1..];
+
+                if (string.Equals(latestVersion, CurrentVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"You are on the latest version ({CurrentVersion}).\n");
+                    return;
+                }
+
+                Console.WriteLine($"New version available: {CurrentVersion} → {latestVersion}");
+                Console.WriteLine("Downloading and installing update...");
+
+                if (release.Assets == null || release.Assets.Count == 0)
+                {
+                    Console.WriteLine("❌ No assets found on latest release. Cannot auto-update.");
+                    Console.WriteLine();
+                    return;
+                }
+
+                // Pick a .zip asset (adjust filter if you use a specific naming pattern)
+                var asset = release.Assets
+                    .FirstOrDefault(a => a.Name != null &&
+                                         a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+
+                if (asset == null || string.IsNullOrWhiteSpace(asset.BrowserDownloadUrl))
+                {
+                    Console.WriteLine("❌ Could not find a .zip asset on the latest release.");
+                    Console.WriteLine();
+                    return;
+                }
+
+                string updateRoot   = Path.Combine(baseDir, "_update");
+                string updateZip    = Path.Combine(updateRoot, "update.zip");
+                string extractDir   = Path.Combine(updateRoot, "new");
+
+                if (Directory.Exists(updateRoot))
+                    Directory.Delete(updateRoot, recursive: true);
+                Directory.CreateDirectory(updateRoot);
+
+                // Download zip
+                byte[] data = Http.GetByteArrayAsync(asset.BrowserDownloadUrl)
+                                  .GetAwaiter().GetResult();
+                File.WriteAllBytes(updateZip, data);
+
+                // Extract zip
+                ZipFile.ExtractToDirectory(updateZip, extractDir);
+
+                // Create update script (batch)
+                string batchPath = Path.Combine(updateRoot, "run_update.bat");
+
+                // We copy everything from extractDir over baseDir, then restart launcher, then clean up
+                string batchContent =
+$@"@echo off
+setlocal
+echo Updating Discord Fake Game Launcher...
+timeout /t 1 /nobreak >nul
+xcopy /E /Y ""{extractDir}\*"" ""{baseDir}"" >nul
+rd /s /q ""{updateRoot}""
+start """" ""{Path.Combine(baseDir, exeFileName)}""
+endlocal
+del ""%~f0""
+";
+
+                File.WriteAllText(batchPath, batchContent);
+
+                // Run the updater and exit current process
+                Process.Start(new ProcessStartInfo(batchPath)
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = updateRoot
+                });
+
+                Environment.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Update check failed: {ex.Message}");
+                Console.WriteLine("Continuing with current version.\n");
+            }
+        }
+
+        // ───────────────────────────────────────────────────────────
+        // gamelist.json freshness
+        // ───────────────────────────────────────────────────────────
+        private static void EnsureFreshGameList(string baseDir)
+        {
+            string path = Path.Combine(baseDir, GameListFileName);
+
+            bool needDownload = false;
+
+            if (!File.Exists(path))
+            {
+                Console.WriteLine($"\"{GameListFileName}\" not found. Will download from Discord API.");
+                needDownload = true;
+            }
+            else
+            {
+                try
+                {
+                    var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(path);
+                    if (age.TotalDays > GameListMaxAgeDays)
+                    {
+                        Console.WriteLine($"\"{GameListFileName}\" is older than {GameListMaxAgeDays} days. Refreshing...");
+                        needDownload = true;
+                    }
+                }
+                catch
+                {
+                    needDownload = true;
+                }
             }
 
-            // Ensure dummy template exists
+            if (needDownload)
+            {
+                if (TryDownloadGameList(path))
+                    Console.WriteLine("✅ gamelist.json updated.\n");
+                else
+                    Console.WriteLine("❌ Failed to update gamelist.json. Using existing file if available.\n");
+            }
+            else
+            {
+                Console.WriteLine($"Using existing \"{GameListFileName}\" (fresh enough).\n");
+            }
+        }
+
+        private static bool TryDownloadGameList(string destPath)
+        {
+            try
+            {
+                const string url = "https://discord.com/api/applications/detectable";
+                string json = Http.GetStringAsync(url).GetAwaiter().GetResult();
+                File.WriteAllText(destPath, json);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading gamelist: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ───────────────────────────────────────────────────────────
+        // Launcher logic (same as before, but uses fresh gamelist)
+        // ───────────────────────────────────────────────────────────
+        private static void RunAsLauncher(string baseDir)
+        {
+            string gameListPath = Path.Combine(baseDir, GameListFileName);
+
+            // Ensure DummyGame template exists
             string dummySourceExe = Path.Combine(baseDir, DummyGameExeName);
             if (!File.Exists(dummySourceExe))
             {
@@ -235,9 +439,8 @@ namespace DiscordFakeGameLauncher
 
             try
             {
-                // IMPORTANT:
-                // - exe name == real game exe (dummyExePath)
-                // - window title (from DummyGame) == selectedApp.Name (different from exe)
+                // exe name == real game exe (dummyExePath)
+                // window title (from DummyGame) == selectedApp.Name (different from exe)
                 var psi = new ProcessStartInfo(dummyExePath)
                 {
                     UseShellExecute = false,
@@ -261,38 +464,14 @@ namespace DiscordFakeGameLauncher
         // ───────────────────────────────────────────────────────────
         // Helpers
         // ───────────────────────────────────────────────────────────
-
-        private static bool TryDownloadGameList(string destPath)
-        {
-            try
-            {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("DiscordFakeGameLauncher/1.0");
-
-                // Discord detectable apps API
-                const string url = "https://discord.com/api/applications/detectable";
-
-                string json = client.GetStringAsync(url).GetAwaiter().GetResult();
-                File.WriteAllText(destPath, json);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error downloading gamelist: {ex.Message}");
-                return false;
-            }
-        }
-
         private static void PrintHeader()
         {
             Console.Title = "Discord Fake Game Launcher";
             Console.WriteLine("============================================");
             Console.WriteLine("     Discord Fake Game Launcher");
             Console.WriteLine("============================================");
-            Console.WriteLine("Console launcher that uses Discord's detectable apps list");
-            Console.WriteLine("and spawns a GUI dummy process with:");
-            Console.WriteLine("- exe name == real game exe");
-            Console.WriteLine("- window title == game name (different from exe)");
+            Console.WriteLine($"Current version: {CurrentVersion}");
+            Console.WriteLine("Auto-updates from GitHub releases & keeps gamelist.json fresh.");
             Console.WriteLine();
         }
 
