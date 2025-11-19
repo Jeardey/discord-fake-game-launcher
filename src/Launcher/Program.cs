@@ -206,25 +206,40 @@ namespace DiscordFakeGameLauncher
                 // Extract zip
                 ZipFile.ExtractToDirectory(updateZip, extractDir);
 
-                // Save the new version locally so we don't re-update next run
+                // IMPORTANT: find the folder that actually contains the new launcher exe
+                string? extractedExePath = null;
                 try
                 {
-                    File.WriteAllText(versionFilePath, latestVersion);
+                    extractedExePath = Directory
+                        .GetFiles(extractDir, exeFileName, SearchOption.AllDirectories)
+                        .FirstOrDefault();
                 }
                 catch
                 {
-                    // not critical, worst case we re-check next run
+                    // ignore, fallback below
                 }
 
-                // Create update script (batch)
+                string copySourceRoot;
+                if (!string.IsNullOrEmpty(extractedExePath))
+                {
+                    copySourceRoot = Path.GetDirectoryName(extractedExePath) ?? extractDir;
+                }
+                else
+                {
+                    // Fallback: maybe files are directly under extractDir
+                    copySourceRoot = extractDir;
+                }
+
                 string batchPath = Path.Combine(updateRoot, "run_update.bat");
 
+                // Write version.txt only AFTER copy, inside the update script
                 string batchContent =
 $@"@echo off
 setlocal
 echo Updating Discord Fake Game Launcher...
 timeout /t 1 /nobreak >nul
-xcopy /E /Y ""{extractDir}\*"" ""{baseDir}"" >nul
+xcopy /E /Y ""{copySourceRoot}\*"" ""{baseDir}"" >nul
+echo {latestVersion} > ""{versionFilePath}""
 rd /s /q ""{updateRoot}""
 start """" ""{Path.Combine(baseDir, exeFileName)}""
 endlocal
