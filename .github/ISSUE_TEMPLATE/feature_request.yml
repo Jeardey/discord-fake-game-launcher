@@ -1,0 +1,48 @@
+name: "✨ Feature request"
+description: "Suggest an idea or improvement for Discord Fake Game Launcher"
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea to make the launcher better? Tell us about it!
+
+  - type: input
+    id: summary
+    attributes:
+      label: Short summary
+      placeholder: "Example: Add favorites list and quick-launch hotkeys"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Explain what’s annoying or missing right now.
+      placeholder: |
+        Example: I often use the same 3 games, but I have to search them every time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe your ideal solution
+      description: If you could design it exactly how you want, how would it work?
+      placeholder: |
+        Example: A "⭐ Favorites" section at the top, and pressing 1–9 launches that favorite.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you’ve considered
+      placeholder: |
+        Example: Manually editing a config file with favorite game IDs.
+
+  - type: textarea
+    id: extras
+    attributes:
+      label: Additional context / mockups
+      description: Screenshots, sketches, or other launchers you like for inspiration.

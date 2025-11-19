@@ -1,0 +1,123 @@
+name: "🐞 Bug report"
+description: "Something in the launcher or dummy game is not working correctly"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve **Discord Fake Game Launcher**!  
+        Please fill out as much as you can – it makes debugging much easier.
+
+  - type: checkboxes
+    id: area
+    attributes:
+      label: What broke?
+      options:
+        - label: Launcher (console app) crashes or doesn’t start
+        - label: Dummy game (fake exe) crashes or doesn’t open
+        - label: Discord doesn’t detect the fake game
+        - label: Auto-update from GitHub seems broken
+        - label: `gamelist.json` / detectable games syncing issue
+        - label: Something else
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened? Keep it short but clear.
+      placeholder: >
+        Example: I select Counter-Strike 2, it says "Fake game launched",
+        but nothing shows up in Discord and no new process appears in Task Manager.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step actions so we can see the same issue.
+      placeholder: |
+        1. Start Launcher.exe
+        2. Search for "counter-strike"
+        3. Choose index 0
+        4. Discord status stays empty
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior (including any error text)
+      description: Copy any console output or error messages here.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Launcher version
+      description: >
+        Shown at the top of the app as "Current version (local)" or inside `version.txt`.
+      placeholder: release_0.2.1
+    validations:
+      required: true
+
+  - type: input
+    id: install_source
+    attributes:
+      label: How did you install it?
+      placeholder: "GitHub release zip / built from source / other"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 10
+        - Windows 11
+        - Other (specify below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Extra environment details
+      description: .NET runtime version, antivirus, overlays, anything that might matter.
+      placeholder: |
+        .NET 8 runtime, Windows 11 23H2, Discord stable client, no other overlays.
+
+  - type: textarea
+    id: gamelist
+    attributes:
+      label: Game details
+      description: >
+        Game you tried to spoof, its index in the list, and the executable entry shown by the launcher.
+      placeholder: |
+        Game: Counter-Strike 2
+        Index: 0
+        Executable entry: win64/cs2.exe
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output / logs
+      description: >
+        Copy everything from the launcher console window (and if possible from the dummy game too).
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context / screenshots
+      description: Drag & drop screenshots or add any other info that might help.
