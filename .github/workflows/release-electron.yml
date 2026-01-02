@@ -72,4 +72,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd electron
-          npx electron-builder --win nsis --publish always
+          npm run dist:publish

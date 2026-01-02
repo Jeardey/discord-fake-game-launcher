@@ -14,8 +14,9 @@
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
     "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
-    "dist": "electron-builder --win nsis",
-    "dist:portable": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "dist:publish": "electron-builder --win nsis --publish always"
   },
   "devDependencies": {
     "electron": "^30.0.0",
