@@ -10,7 +10,8 @@
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
     "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -37,8 +38,16 @@
     ],
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Discord Fake Game Launcher"
     }
   }
 }

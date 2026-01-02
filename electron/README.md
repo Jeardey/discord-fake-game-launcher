@@ -17,6 +17,20 @@ npm run build:dummy
 npm run dev
 ```
 
+## Build an installer (Setup.exe)
+
+```powershell
+npm run dist
+```
+
+This produces an NSIS installer in `electron/dist/` that installs to Program Files and creates shortcuts.
+
+## Optional: portable build
+
+```powershell
+npm run dist:portable
+```
+
 Notes:
 - The UI stores your installed games in Electron userData as `myGames.json`.
 - It stores Discord's detectable app list in userData as `gamelist.json`.
