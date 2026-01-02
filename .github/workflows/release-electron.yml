@@ -1,0 +1,75 @@
+name: Release (Electron Installer)
+
+on:
+  push:
+    tags:
+      - 'release_*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Extract version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -match '^release_(\d+\.\d+\.\d+)$') {
+            $version = $Matches[1]
+            "version=$version" >> $env:GITHUB_OUTPUT
+            Write-Host "Version: $version"
+          } else {
+            Write-Error "Tag '$tag' does not match release_X.Y.Z"
+            exit 1
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Discord Fake Game Launcher ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Publish DummyGame for bundling
+        run: |
+          dotnet restore ./src/DummyGame/DummyGame.csproj
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm install --no-audit --no-fund
+
+      - name: Set Electron app version
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          Push-Location electron
+          npm version $v --no-git-tag-version
+          Pop-Location
+
+      - name: Build and publish installer + latest.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd electron
+          npx electron-builder --win nsis --publish always

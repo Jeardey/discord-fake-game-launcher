@@ -2,6 +2,10 @@
   "name": "discord-fake-game-launcher-ui",
   "private": true,
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jeardey/discord-fake-game-launcher.git"
+  },
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
@@ -16,6 +20,9 @@
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
   },
   "build": {
     "appId": "com.jeardey.discordfakegamelauncher",
@@ -41,6 +48,13 @@
         "nsis"
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Jeardey",
+        "repo": "discord-fake-game-launcher"
+      }
+    ],
     "nsis": {
       "oneClick": true,
       "perMachine": true,

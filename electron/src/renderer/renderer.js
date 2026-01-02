@@ -31,6 +31,19 @@ const searchInput = document.getElementById('searchInput');
 const modalSearchInput = document.getElementById('modalSearchInput');
 const contextMenuEl = document.getElementById('contextMenu');
 
+// Update modal
+const updateModal = document.getElementById('updateModal');
+const updateCloseBtn = document.getElementById('updateCloseBtn');
+const updateSubtitle = document.getElementById('updateSubtitle');
+const updateNotes = document.getElementById('updateNotes');
+const updateInstallBtn = document.getElementById('updateInstallBtn');
+const updateRemindBtn = document.getElementById('updateRemindBtn');
+
+let updateUiState = {
+  visible: false,
+  installing: false
+};
+
 function log(msg, type = '') {
   const div = document.createElement('div');
   div.className = `log-entry ${type}`;
@@ -195,6 +208,35 @@ function closeModal() {
   addGameModal.style.display = 'none';
 }
 
+function showUpdateModal(payload) {
+  if (!payload || !updateModal) return;
+
+  updateUiState.visible = true;
+  updateUiState.installing = false;
+
+  updateInstallBtn.disabled = false;
+  updateRemindBtn.disabled = false;
+  updateInstallBtn.textContent = 'Install update';
+
+  const version = payload.version ? `v${payload.version}` : 'New version';
+  updateSubtitle.textContent = payload.releaseName
+    ? `${version} — ${payload.releaseName}`
+    : version;
+
+  const notesText = (payload.releaseNotes && String(payload.releaseNotes).trim())
+    ? String(payload.releaseNotes)
+    : 'No release notes provided.';
+  updateNotes.textContent = notesText;
+
+  updateModal.style.display = 'flex';
+}
+
+function hideUpdateModal() {
+  updateUiState.visible = false;
+  updateUiState.installing = false;
+  updateModal.style.display = 'none';
+}
+
 function debounce(fn, waitMs) {
   let t = null;
   return (...args) => {
@@ -351,6 +393,40 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('blur', () => closeContextMenu());
 
+// Update modal events
+if (updateCloseBtn) {
+  updateCloseBtn.addEventListener('click', async () => {
+    await launcherApi.remindUpdateLater();
+    hideUpdateModal();
+  });
+}
+
+if (updateRemindBtn) {
+  updateRemindBtn.addEventListener('click', async () => {
+    await launcherApi.remindUpdateLater();
+    hideUpdateModal();
+  });
+}
+
+if (updateInstallBtn) {
+  updateInstallBtn.addEventListener('click', async () => {
+    if (updateUiState.installing) return;
+    updateUiState.installing = true;
+    updateInstallBtn.disabled = true;
+    updateRemindBtn.disabled = true;
+    updateInstallBtn.textContent = 'Downloading…';
+
+    const r = await launcherApi.installUpdate();
+    if (!r?.ok) {
+      log(`Update failed: ${r?.error || 'unknown error'}`, 'log-danger');
+      updateUiState.installing = false;
+      updateInstallBtn.disabled = false;
+      updateRemindBtn.disabled = false;
+      updateInstallBtn.textContent = 'Install update';
+    }
+  });
+}
+
 // Window controls
 const minBtn = document.getElementById('minBtn');
 const closeBtn = document.getElementById('closeBtn');
@@ -368,4 +444,23 @@ launcherApi.onGameExited(() => {
   await ensureDatabaseSynced();
   await refreshMyGames();
   renderMainList('');
+
+  // Update notifications
+  if (launcherApi.onUpdateAvailable) {
+    launcherApi.onUpdateAvailable((payload) => {
+      showUpdateModal(payload);
+      log('Update available.', 'log-success');
+    });
+  }
+  if (launcherApi.onUpdateDownloaded) {
+    launcherApi.onUpdateDownloaded(async () => {
+      // Install immediately once downloaded
+      await launcherApi.quitAndInstallUpdate();
+    });
+  }
+  if (launcherApi.onUpdateError) {
+    launcherApi.onUpdateError((payload) => {
+      log(`Update error: ${payload?.message || 'unknown error'}`, 'log-danger');
+    });
+  }
 })();

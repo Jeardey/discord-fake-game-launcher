@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs/promises');
@@ -24,7 +25,8 @@ function getUserDataPaths() {
     userData,
     myGamesPath: path.join(userData, 'myGames.json'),
     gameListPath: path.join(userData, 'gamelist.json'),
-    gamesRoot: path.join(userData, 'games')
+    gamesRoot: path.join(userData, 'games'),
+    updateStatePath: path.join(userData, 'updateState.json')
   };
 }
 
@@ -309,6 +311,86 @@ async function ensureFakeExeForGame(game, paths) {
 let mainWindow = null;
 let runningProc = null;
 
+let pendingUpdateInfo = null;
+
+async function readUpdateState() {
+  const paths = getUserDataPaths();
+  return await readJsonIfExists(paths.updateStatePath, { dismissedVersion: null, dismissedAt: null });
+}
+
+async function writeUpdateState(state) {
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+  await writeJson(paths.updateStatePath, state);
+}
+
+function coerceReleaseNotesToText(releaseNotes) {
+  if (!releaseNotes) return '';
+
+  // electron-updater can provide string or array (for multi-platform notes)
+  if (typeof releaseNotes === 'string') return releaseNotes;
+
+  if (Array.isArray(releaseNotes)) {
+    // Prefer Windows notes, else join whatever exists
+    const win = releaseNotes.find(r => String(r?.path || '').toLowerCase().includes('win'));
+    const chosen = win || releaseNotes[0];
+    if (typeof chosen?.note === 'string') return chosen.note;
+    return releaseNotes
+      .map(r => (typeof r?.note === 'string' ? r.note : ''))
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  return String(releaseNotes);
+}
+
+async function maybeCheckForUpdates() {
+  // Updates only make sense in packaged builds.
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', async (info) => {
+    try {
+      const state = await readUpdateState();
+      if (state?.dismissedVersion && String(state.dismissedVersion) === String(info?.version || '')) {
+        return; // user chose "remind later" for this version
+      }
+    } catch {
+      // ignore
+    }
+
+    pendingUpdateInfo = info;
+    const payload = {
+      version: String(info?.version || ''),
+      releaseName: String(info?.releaseName || ''),
+      releaseDate: info?.releaseDate ? String(info.releaseDate) : '',
+      releaseNotes: coerceReleaseNotesToText(info?.releaseNotes)
+    };
+
+    mainWindow?.webContents.send('update/available', payload);
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    pendingUpdateInfo = null;
+  });
+
+  autoUpdater.on('error', (err) => {
+    mainWindow?.webContents.send('update/error', { message: String(err?.message || err || 'Unknown error') });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    mainWindow?.webContents.send('update/downloaded');
+  });
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    mainWindow?.webContents.send('update/error', { message: String(e?.message || e || 'Unknown error') });
+  }
+}
+
 function setWindowIconFromDataUrl(dataUrl) {
   if (!mainWindow) return;
   try {
@@ -339,6 +421,9 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   await createWindow();
+
+  // Check for updates (packaged builds only)
+  await maybeCheckForUpdates();
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -489,4 +574,40 @@ ipcMain.handle('launcher/stopGame', async () => {
 
   runningProc = null;
   return { ok: true };
+});
+
+// ───────────────────────────────────────────────────────────
+// Updates
+// ───────────────────────────────────────────────────────────
+ipcMain.handle('update/remindLater', async () => {
+  const v = String(pendingUpdateInfo?.version || '');
+  await writeUpdateState({ dismissedVersion: v || null, dismissedAt: new Date().toISOString() });
+  pendingUpdateInfo = null;
+  return { ok: true };
+});
+
+ipcMain.handle('update/install', async () => {
+  if (!app.isPackaged) return { ok: false, error: 'Updates are only available in packaged builds.' };
+
+  try {
+    // Clear any previous dismiss state so the same version doesn't get suppressed.
+    await writeUpdateState({ dismissedVersion: null, dismissedAt: null });
+
+    await autoUpdater.downloadUpdate();
+
+    // When update-downloaded fires, renderer can call quitAndInstall.
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || 'Failed to download update') };
+  }
+});
+
+ipcMain.handle('update/quitAndInstall', async () => {
+  if (!app.isPackaged) return { ok: false, error: 'Not packaged.' };
+  try {
+    autoUpdater.quitAndInstall(true, true);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || 'Failed to install update') };
+  }
 });

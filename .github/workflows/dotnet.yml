@@ -46,7 +46,7 @@ jobs:
           cd electron
           npm install --no-audit --no-fund
 
-      - name: Build Electron (portable exe)
+      - name: Build Electron (installer)
         run: |
           cd electron
           npm run dist

@@ -86,6 +86,23 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="updateModal">
+    <div class="modal-container" style="width: 640px;">
+      <div class="modal-header">
+        <span id="updateTitle">Update Available</span>
+        <svg style="cursor:pointer;" id="updateCloseBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </div>
+      <div class="modal-body">
+        <div style="color: var(--text-muted); font-weight: 600; margin-bottom: 10px;" id="updateSubtitle"></div>
+        <div class="modal-list" style="padding: 12px; overflow: auto; font-family: Consolas, monospace; font-size: 12px; color: var(--text-normal);" id="updateNotes"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
+          <button class="btn-add-game" id="updateRemindBtn" style="width:auto; padding:10px 14px;">Remind me later</button>
+          <button class="btn-main" id="updateInstallBtn" style="height:auto; padding:10px 18px;">Install update</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="context-menu" id="contextMenu" style="display:none;"></div>
 
   <script src="renderer.js"></script>

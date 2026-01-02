@@ -22,5 +22,22 @@ contextBridge.exposeInMainWorld('launcherApi', {
   onGameExited: (handler) => {
     ipcRenderer.removeAllListeners('launcher/gameExited');
     ipcRenderer.on('launcher/gameExited', handler);
+  },
+
+  // Updates
+  installUpdate: () => ipcRenderer.invoke('update/install'),
+  remindUpdateLater: () => ipcRenderer.invoke('update/remindLater'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('update/quitAndInstall'),
+  onUpdateAvailable: (handler) => {
+    ipcRenderer.removeAllListeners('update/available');
+    ipcRenderer.on('update/available', (_evt, payload) => handler(payload));
+  },
+  onUpdateDownloaded: (handler) => {
+    ipcRenderer.removeAllListeners('update/downloaded');
+    ipcRenderer.on('update/downloaded', handler);
+  },
+  onUpdateError: (handler) => {
+    ipcRenderer.removeAllListeners('update/error');
+    ipcRenderer.on('update/error', (_evt, payload) => handler(payload));
   }
 });
