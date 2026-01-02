@@ -29,6 +29,7 @@ const addGameModal = document.getElementById('addGameModal');
 const modalListEl = document.getElementById('modalList');
 const searchInput = document.getElementById('searchInput');
 const modalSearchInput = document.getElementById('modalSearchInput');
+const contextMenuEl = document.getElementById('contextMenu');
 
 function log(msg, type = '') {
   const div = document.createElement('div');
@@ -88,8 +89,73 @@ function renderMainList(filter = '') {
       }
     });
 
+    div.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openGameContextMenu(game, e.clientX, e.clientY);
+    });
+
     gameListEl.appendChild(div);
   }
+}
+
+function closeContextMenu() {
+  contextMenuEl.style.display = 'none';
+  contextMenuEl.innerHTML = '';
+}
+
+function openGameContextMenu(game, x, y) {
+  if (!game) return;
+
+  contextMenuEl.innerHTML = `
+    <div class="context-menu-item danger" id="ctxDelete">Delete from library</div>
+  `;
+
+  const margin = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  contextMenuEl.style.display = 'block';
+
+  // Position first, then clamp after layout
+  contextMenuEl.style.left = `${x}px`;
+  contextMenuEl.style.top = `${y}px`;
+
+  requestAnimationFrame(() => {
+    const rect = contextMenuEl.getBoundingClientRect();
+    let left = x;
+    let top = y;
+
+    if (left + rect.width + margin > vw) left = Math.max(margin, vw - rect.width - margin);
+    if (top + rect.height + margin > vh) top = Math.max(margin, vh - rect.height - margin);
+
+    contextMenuEl.style.left = `${left}px`;
+    contextMenuEl.style.top = `${top}px`;
+  });
+
+  const deleteBtn = document.getElementById('ctxDelete');
+  deleteBtn.addEventListener('click', async () => {
+    // Avoid deleting the currently running selection
+    if (isRunning && selectedGame && selectedGame.appId === game.appId && selectedGame.exe === game.exe) {
+      log('Stop the running game before deleting it.', 'log-danger');
+      closeContextMenu();
+      return;
+    }
+
+    await launcherApi.deleteGame(game.appId, game.exe);
+    closeContextMenu();
+    await refreshMyGames();
+
+    // If deleted selected game (not running), clear selection
+    if (selectedGame && selectedGame.appId === game.appId && selectedGame.exe === game.exe) {
+      selectedGame = null;
+      heroEmptyState.style.display = 'flex';
+      heroContent.style.display = 'none';
+      setSelectedBackground(null);
+      renderMainList(searchInput.value);
+    }
+
+    log(`Deleted ${game.name} from library.`, 'log-success');
+  });
 }
 
 async function toggleFavorite(game) {
@@ -271,6 +337,19 @@ modalListEl.addEventListener('scroll', () => {
     renderNextModalPage();
   }
 });
+
+// Close context menu on outside click / escape
+document.addEventListener('click', (e) => {
+  if (contextMenuEl.style.display === 'none') return;
+  if (e.target && contextMenuEl.contains(e.target)) return;
+  closeContextMenu();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeContextMenu();
+});
+
+window.addEventListener('blur', () => closeContextMenu());
 
 // Window controls
 const minBtn = document.getElementById('minBtn');

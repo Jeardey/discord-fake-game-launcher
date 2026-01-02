@@ -428,6 +428,24 @@ ipcMain.handle('launcher/toggleFavorite', async (_evt, { appId, exe }) => {
   return updated;
 });
 
+ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
+  const paths = getUserDataPaths();
+  const myGames = await readJsonIfExists(paths.myGamesPath, []);
+  const safeList = Array.isArray(myGames) ? myGames : [];
+
+  const before = safeList.length;
+  const filtered = safeList.filter(g => !(
+    String(g?.appId || '') === String(appId || '') &&
+    String(g?.exe || '') === String(exe || '')
+  ));
+
+  if (filtered.length !== before) {
+    await writeJson(paths.myGamesPath, filtered);
+  }
+
+  return { ok: true, removed: before - filtered.length };
+});
+
 ipcMain.handle('launcher/selectGame', async (_evt, game) => {
   // Set taskbar icon to selected game icon (Windows)
   if (game?.icon) setWindowIconFromDataUrl(game.icon);

@@ -371,6 +371,33 @@ body {
 .modal-item-name { font-weight: bold; display: block; }
 .modal-item-exe { font-size: 0.8em; opacity: 0.6; font-family: consolas, monospace; }
 
+.context-menu {
+  position: fixed;
+  min-width: 200px;
+  background-color: var(--bg-main);
+  border: 1px solid var(--bg-darkest);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  padding: 6px;
+  z-index: 200;
+}
+
+.context-menu-item {
+  padding: 10px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.context-menu-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.context-menu-item.danger {
+  color: var(--danger);
+}
+
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background-color: rgba(0,0,0,0.1); }
 ::-webkit-scrollbar-thumb { background-color: var(--bg-darkest); border-radius: 10px; }
