@@ -17,6 +17,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
       - name: Restore
         run: |
           dotnet restore ./src/DummyGame/DummyGame.csproj
@@ -32,8 +37,24 @@ jobs:
           dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./publish --no-restore
           dotnet publish ./src/Launcher/Launcher.csproj  -c Release -o ./publish --no-restore
 
+      - name: Prepare Electron bundled DummyGame
+        run: |
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm install --no-audit --no-fund
+
+      - name: Build Electron (portable exe)
+        run: |
+          cd electron
+          npm run dist
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: DiscordFakeGameLauncher
-          path: publish
+          path: |
+            publish
+            electron/dist

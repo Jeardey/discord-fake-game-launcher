@@ -1,0 +1,405 @@
+const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const fsp = require('fs/promises');
+const os = require('os');
+const { spawn } = require('child_process');
+
+const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
+
+function ensureDirSync(dirPath) {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function getUserDataPaths() {
+  const userData = app.getPath('userData');
+  return {
+    userData,
+    myGamesPath: path.join(userData, 'myGames.json'),
+    gameListPath: path.join(userData, 'gamelist.json'),
+    gamesRoot: path.join(userData, 'games')
+  };
+}
+
+function sanitizeFolderName(name) {
+  return (name || 'UnknownApp')
+    .replace(/[<>:"/\\|?*]/g, '_')
+    .replace(/[\u0000-\u001F]/g, '_')
+    .trim()
+    .slice(0, 128);
+}
+
+function normalizeExeRelPath(exeName) {
+  return (exeName || '')
+    .replace(/\\/g, path.sep)
+    .replace(/\//g, path.sep);
+}
+
+function pickBestExecutable(appEntry) {
+  const exes = Array.isArray(appEntry.executables) ? appEntry.executables : [];
+
+  const nonLauncherWin32 = exes.find(e =>
+    String(e?.os || '').toLowerCase() === 'win32' && !e?.is_launcher && e?.name);
+  if (nonLauncherWin32) return nonLauncherWin32;
+
+  const anyWin32 = exes.find(e =>
+    String(e?.os || '').toLowerCase() === 'win32' && e?.name);
+  return anyWin32 || null;
+}
+
+function toDatabaseGames(detectableApps) {
+  const result = [];
+  for (const appEntry of detectableApps || []) {
+    if (!appEntry?.name) continue;
+    const bestExe = pickBestExecutable(appEntry);
+    if (!bestExe?.name) continue;
+
+    result.push({
+      id: String(appEntry.id || ''),
+      name: String(appEntry.name),
+      exe: String(bestExe.name),
+      isLauncher: Boolean(bestExe.is_launcher)
+    });
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
+}
+
+async function readJsonIfExists(filePath, fallback) {
+  try {
+    const raw = await fsp.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeJson(filePath, data) {
+  await fsp.writeFile(filePath, JSON.stringify(data, null, 2) + os.EOL, 'utf8');
+}
+
+async function syncGameList(gameListPath) {
+  const res = await fetch(DISCORD_DETECTABLE_URL, {
+    headers: {
+      'User-Agent': 'DiscordFakeGameLauncherUI/0.1.0',
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Discord API error: ${res.status} ${res.statusText}`);
+  }
+
+  const text = (await res.text()).trim();
+
+  let localTrimmed = null;
+  try {
+    localTrimmed = (await fsp.readFile(gameListPath, 'utf8')).trim();
+  } catch {
+    localTrimmed = null;
+  }
+
+  if (localTrimmed !== text) {
+    // Optional backup
+    if (localTrimmed != null) {
+      try {
+        await fsp.copyFile(gameListPath, gameListPath + '.bak');
+      } catch {
+        // ignore
+      }
+    }
+
+    await fsp.writeFile(gameListPath, text + os.EOL, 'utf8');
+    return { updated: true };
+  }
+
+  return { updated: false };
+}
+
+function makePlaceholderIconDataUrl(gameName) {
+  const letter = (String(gameName || '?').trim()[0] || '?').toUpperCase();
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">\
+  <rect width="256" height="256" rx="48" ry="48" fill="#202225"/>\
+  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial" font-size="140" font-weight="700" fill="#ffffff">${letter}</text>\
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function makePlaceholderThumbnailDataUrl(gameName) {
+  const safe = String(gameName || 'Game').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">\
+  <defs>\
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\
+      <stop offset="0" stop-color="#2f3136"/>\
+      <stop offset="1" stop-color="#202225"/>\
+    </linearGradient>\
+  </defs>\
+  <rect width="1200" height="600" fill="url(#g)"/>\
+  <text x="60" y="330" font-family="Segoe UI, Arial" font-size="72" font-weight="700" fill="#ffffff" opacity="0.9">${safe}</text>\
+  <text x="60" y="390" font-family="Consolas, monospace" font-size="28" fill="#b9bbbe" opacity="0.9">Fake Game Launcher</text>\
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+async function findDummyGameTemplate() {
+  if (process.env.DUMMYGAME_EXE && fs.existsSync(process.env.DUMMYGAME_EXE)) {
+    return process.env.DUMMYGAME_EXE;
+  }
+
+  // Packaged build: bundled via electron-builder extraResources
+  if (app.isPackaged) {
+    const bundled = path.join(process.resourcesPath, 'dummygame', 'DummyGame.exe');
+    if (fs.existsSync(bundled)) return bundled;
+  }
+
+  // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame.exe
+  const repoRoot = path.resolve(app.getAppPath(), '..', '..');
+  const dummyProjBin = path.join(repoRoot, 'src', 'DummyGame', 'bin');
+  if (!fs.existsSync(dummyProjBin)) return null;
+
+  // Try common locations first (Release, Debug)
+  const candidates = [];
+  const configs = ['Release', 'Debug'];
+  for (const cfg of configs) {
+    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows', 'DummyGame.exe'));
+    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows7.0', 'DummyGame.exe'));
+  }
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+
+  // Last resort: shallow search
+  const stack = [dummyProjBin];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        // avoid huge recursion
+        if (p.toLowerCase().includes('ref')) continue;
+        stack.push(p);
+      } else if (e.isFile() && e.name.toLowerCase() === 'dummygame.exe') {
+        return p;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function ensureFakeExeForGame(game, paths) {
+  const dummySourceExe = await findDummyGameTemplate();
+  if (!dummySourceExe) {
+    throw new Error('Could not find DummyGame.exe. Run: npm run build:dummy (from electron/), or set DUMMYGAME_EXE env var to the built DummyGame.exe path.');
+  }
+
+  ensureDirSync(paths.gamesRoot);
+
+  const appIdFolder = game.appId ? String(game.appId) : sanitizeFolderName(game.name);
+
+  const exeRelPath = normalizeExeRelPath(game.exe);
+  const exeFolderPart = path.dirname(exeRelPath) === '.' ? '' : path.dirname(exeRelPath);
+  const exeFileName = path.basename(exeRelPath);
+
+  const gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
+  ensureDirSync(gameFolder);
+
+  const destExePath = path.join(gameFolder, exeFileName);
+
+  if (!fs.existsSync(destExePath)) {
+    // Copy main exe but rename to target exe file name
+    await fsp.copyFile(dummySourceExe, destExePath);
+
+    // Copy sidecar files DummyGame.* from source dir
+    const sourceDir = path.dirname(dummySourceExe);
+    const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
+
+    const sidecars = await fsp.readdir(sourceDir);
+    for (const fileName of sidecars) {
+      if (!fileName.toLowerCase().startsWith(dummyBase.toLowerCase() + '.')) continue;
+      if (fileName.toLowerCase() === path.basename(dummySourceExe).toLowerCase()) continue;
+
+      const src = path.join(sourceDir, fileName);
+      const dest = path.join(gameFolder, fileName);
+      if (!fs.existsSync(dest)) {
+        await fsp.copyFile(src, dest);
+      }
+    }
+  }
+
+  return { destExePath, workingDirectory: path.dirname(destExePath) };
+}
+
+let mainWindow = null;
+let runningProc = null;
+
+function setWindowIconFromDataUrl(dataUrl) {
+  if (!mainWindow) return;
+  try {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    if (!img.isEmpty()) mainWindow.setIcon(img);
+  } catch {
+    // ignore
+  }
+}
+
+async function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1100,
+    height: 700,
+    minWidth: 900,
+    minHeight: 600,
+    frame: false,
+    backgroundColor: '#36393f',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  await mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+}
+
+app.whenReady().then(async () => {
+  await createWindow();
+
+  app.on('activate', async () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      await createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+ipcMain.handle('app/window/minimize', () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle('app/window/close', () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle('launcher/syncGameList', async () => {
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+  const result = await syncGameList(paths.gameListPath);
+  return { ...result, gameListPath: paths.gameListPath };
+});
+
+ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter } = {}) => {
+  const paths = getUserDataPaths();
+  const detectableApps = await readJsonIfExists(paths.gameListPath, []);
+  const games = toDatabaseGames(detectableApps)
+    .filter(g => !filter || g.name.toLowerCase().includes(String(filter).toLowerCase()));
+  return games;
+});
+
+ipcMain.handle('launcher/getMyGames', async () => {
+  const paths = getUserDataPaths();
+  const list = await readJsonIfExists(paths.myGamesPath, []);
+  return Array.isArray(list) ? list : [];
+});
+
+ipcMain.handle('launcher/addGame', async (_evt, game) => {
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+
+  const myGames = await readJsonIfExists(paths.myGamesPath, []);
+  const safeList = Array.isArray(myGames) ? myGames : [];
+
+  const entry = {
+    appId: String(game?.id || ''),
+    name: String(game?.name || 'Game'),
+    exe: String(game?.exe || ''),
+    isFavorite: false,
+    icon: makePlaceholderIconDataUrl(game?.name),
+    thumbnail: makePlaceholderThumbnailDataUrl(game?.name)
+  };
+
+  // Avoid duplicates by (appId + exe)
+  const key = `${entry.appId}::${entry.exe}`;
+  const existingKey = (g) => `${String(g?.appId || '')}::${String(g?.exe || '')}`;
+  if (!safeList.some(g => existingKey(g) === key)) {
+    safeList.push(entry);
+    await writeJson(paths.myGamesPath, safeList);
+  }
+
+  return entry;
+});
+
+ipcMain.handle('launcher/toggleFavorite', async (_evt, { appId, exe }) => {
+  const paths = getUserDataPaths();
+  const myGames = await readJsonIfExists(paths.myGamesPath, []);
+  const safeList = Array.isArray(myGames) ? myGames : [];
+
+  let updated = null;
+  for (const g of safeList) {
+    if (String(g?.appId || '') === String(appId || '') && String(g?.exe || '') === String(exe || '')) {
+      g.isFavorite = !g.isFavorite;
+      updated = g;
+      break;
+    }
+  }
+
+  await writeJson(paths.myGamesPath, safeList);
+  return updated;
+});
+
+ipcMain.handle('launcher/selectGame', async (_evt, game) => {
+  // Set taskbar icon to selected game icon (Windows)
+  if (game?.icon) setWindowIconFromDataUrl(game.icon);
+  return true;
+});
+
+ipcMain.handle('launcher/launchGame', async (_evt, game) => {
+  if (runningProc) {
+    return { ok: false, error: 'A game is already running.' };
+  }
+
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+
+  const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
+
+  const displayName = String(game?.name || path.basename(destExePath));
+
+  runningProc = spawn(destExePath, [displayName], {
+    cwd: workingDirectory,
+    windowsHide: false,
+    stdio: 'ignore'
+  });
+
+  runningProc.once('exit', () => {
+    runningProc = null;
+    mainWindow?.webContents.send('launcher/gameExited');
+  });
+
+  return { ok: true, exePath: destExePath };
+});
+
+ipcMain.handle('launcher/stopGame', async () => {
+  if (!runningProc) return { ok: true };
+
+  try {
+    runningProc.kill();
+  } catch {
+    // ignore
+  }
+
+  runningProc = null;
+  return { ok: true };
+});

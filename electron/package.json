@@ -1,0 +1,44 @@
+{
+  "name": "discord-fake-game-launcher-ui",
+  "private": true,
+  "version": "0.1.0",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "sync:gamelist": "node ./scripts/sync-gamelist.js",
+    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
+    "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.jeardey.discordfakegamelauncher",
+    "productName": "Discord Fake Game Launcher",
+    "files": [
+      "src/**"
+    ],
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "build-resources/dummygame",
+        "to": "dummygame",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  }
+}
