@@ -7,6 +7,13 @@ const { spawn } = require('child_process');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
+// In-memory cache to avoid re-reading/parsing large gamelist.json on every search.
+let databaseCache = {
+  loaded: false,
+  gameListPath: null,
+  games: []
+};
+
 function ensureDirSync(dirPath) {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -58,12 +65,71 @@ function toDatabaseGames(detectableApps) {
       id: String(appEntry.id || ''),
       name: String(appEntry.name),
       exe: String(bestExe.name),
-      isLauncher: Boolean(bestExe.is_launcher)
+      isLauncher: Boolean(bestExe.is_launcher),
+      _nameLower: String(appEntry.name).toLowerCase()
     });
   }
 
   result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
+}
+
+async function loadDatabaseCache(gameListPath) {
+  if (!gameListPath) return;
+
+  try {
+    const detectableApps = await readJsonIfExists(gameListPath, []);
+    const games = toDatabaseGames(detectableApps);
+    databaseCache = {
+      loaded: true,
+      gameListPath,
+      games
+    };
+  } catch {
+    // Keep old cache if parsing fails
+  }
+}
+
+function pageDatabaseGames({ filter, offset, limit }) {
+  const term = String(filter || '').trim().toLowerCase();
+  const start = Number.isFinite(offset) ? Math.max(0, offset) : 0;
+  const pageSize = Number.isFinite(limit) ? Math.min(500, Math.max(1, limit)) : 200;
+
+  const items = [];
+  let matchIndex = 0;
+  let hasMore = false;
+
+  const games = databaseCache.games;
+
+  for (let i = 0; i < games.length; i++) {
+    const g = games[i];
+    if (term && !g._nameLower.includes(term)) continue;
+
+    if (matchIndex >= start && items.length < pageSize) {
+      // Strip internal fields before crossing IPC boundary
+      items.push({
+        id: g.id,
+        name: g.name,
+        exe: g.exe,
+        isLauncher: g.isLauncher
+      });
+    }
+
+    matchIndex++;
+
+    // Determine whether there is at least one more match beyond this page
+    if (items.length >= pageSize && matchIndex > start + pageSize) {
+      hasMore = true;
+      break;
+    }
+  }
+
+  return {
+    items,
+    offset: start,
+    limit: pageSize,
+    hasMore
+  };
 }
 
 async function readJsonIfExists(filePath, fallback) {
@@ -297,15 +363,18 @@ ipcMain.handle('launcher/syncGameList', async () => {
   const paths = getUserDataPaths();
   ensureDirSync(paths.userData);
   const result = await syncGameList(paths.gameListPath);
+  await loadDatabaseCache(paths.gameListPath);
   return { ...result, gameListPath: paths.gameListPath };
 });
 
-ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter } = {}) => {
+ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter, offset, limit } = {}) => {
   const paths = getUserDataPaths();
-  const detectableApps = await readJsonIfExists(paths.gameListPath, []);
-  const games = toDatabaseGames(detectableApps)
-    .filter(g => !filter || g.name.toLowerCase().includes(String(filter).toLowerCase()));
-  return games;
+
+  if (!databaseCache.loaded || databaseCache.gameListPath !== paths.gameListPath) {
+    await loadDatabaseCache(paths.gameListPath);
+  }
+
+  return pageDatabaseGames({ filter, offset, limit });
 });
 
 ipcMain.handle('launcher/getMyGames', async () => {

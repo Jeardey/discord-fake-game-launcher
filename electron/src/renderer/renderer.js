@@ -6,6 +6,14 @@ let myGames = [];
 let selectedGame = null;
 let isRunning = false;
 
+let modalState = {
+  filter: '',
+  offset: 0,
+  limit: 200,
+  hasMore: false,
+  loading: false
+};
+
 const gameListEl = document.getElementById('gameList');
 const heroEmptyState = document.getElementById('heroEmptyState');
 const heroContent = document.getElementById('heroContent');
@@ -114,31 +122,54 @@ async function selectGame(game) {
 function openModal() {
   addGameModal.style.display = 'flex';
   modalSearchInput.value = '';
-  renderModalList('');
+  resetAndRenderModal('');
 }
 
 function closeModal() {
   addGameModal.style.display = 'none';
 }
 
-async function renderModalList(filter = '') {
-  modalListEl.innerHTML = '';
+function debounce(fn, waitMs) {
+  let t = null;
+  return (...args) => {
+    if (t) window.clearTimeout(t);
+    t = window.setTimeout(() => fn(...args), waitMs);
+  };
+}
 
-  let db;
+function resetAndRenderModal(filter) {
+  modalState = {
+    filter: String(filter || ''),
+    offset: 0,
+    limit: 200,
+    hasMore: false,
+    loading: false
+  };
+  modalListEl.innerHTML = '';
+  renderNextModalPage();
+}
+
+async function renderNextModalPage() {
+  if (modalState.loading) return;
+  modalState.loading = true;
+
+  let page;
   try {
-    db = await launcherApi.getDatabaseGames(filter);
+    page = await launcherApi.getDatabaseGames(modalState.filter, modalState.offset, modalState.limit);
   } catch (e) {
-    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Click “Add Game” again after sync. (${String(e.message || e)})</div>`;
+    modalState.loading = false;
+    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Try again. (${String(e.message || e)})</div>`;
     return;
   }
 
-  const available = db.filter(g => !myGames.some(mg => mg.appId === g.id && mg.exe === g.exe));
+  const frag = document.createDocumentFragment();
+  const items = Array.isArray(page?.items) ? page.items : [];
 
-  for (const game of available) {
+  for (const game of items) {
+    if (myGames.some(mg => mg.appId === game.id && mg.exe === game.exe)) continue;
+
     const div = document.createElement('div');
     div.className = 'modal-item';
-
-    // icons in database list are placeholders (created when installing)
     div.innerHTML = `
       <div style="width:32px; height:32px; border-radius:4px; background: var(--bg-darkest);"></div>
       <div class="modal-item-info">
@@ -156,12 +187,19 @@ async function renderModalList(filter = '') {
       await selectGame(myGames[myGames.length - 1]);
     };
 
-    modalListEl.appendChild(div);
+    frag.appendChild(div);
   }
 
-  if (modalListEl.children.length === 0) {
+  modalListEl.appendChild(frag);
+
+  const hasAnyRows = modalListEl.querySelector('.modal-item') != null;
+  if (!hasAnyRows && modalState.offset === 0) {
     modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">No results.</div>`;
   }
+
+  modalState.hasMore = Boolean(page?.hasMore);
+  modalState.offset += Number.isFinite(page?.items?.length) ? page.items.length : items.length;
+  modalState.loading = false;
 }
 
 async function refreshMyGames() {
@@ -220,7 +258,19 @@ launchBtn.addEventListener('click', async () => {
 document.getElementById('openAddModalBtn').onclick = openModal;
 document.getElementById('closeModalBtn').onclick = closeModal;
 searchInput.addEventListener('input', (e) => renderMainList(e.target.value));
-modalSearchInput.addEventListener('input', (e) => renderModalList(e.target.value));
+const onModalSearch = debounce((value) => resetAndRenderModal(value), 200);
+modalSearchInput.addEventListener('input', (e) => onModalSearch(e.target.value));
+
+modalListEl.addEventListener('scroll', () => {
+  if (!addGameModal || addGameModal.style.display !== 'flex') return;
+  if (!modalState.hasMore) return;
+  if (modalState.loading) return;
+
+  const remaining = modalListEl.scrollHeight - (modalListEl.scrollTop + modalListEl.clientHeight);
+  if (remaining < 250) {
+    renderNextModalPage();
+  }
+});
 
 // Window controls
 const minBtn = document.getElementById('minBtn');
