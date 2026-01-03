@@ -278,8 +278,11 @@ async function renderNextModalPage() {
 
     const div = document.createElement('div');
     div.className = 'modal-item';
+    const iconSrc = game.iconUrl ? String(game.iconUrl) : '';
     div.innerHTML = `
-      <div style="width:32px; height:32px; border-radius:4px; background: var(--bg-darkest);"></div>
+      ${iconSrc
+        ? `<img src="${iconSrc}" style="width:32px; height:32px; border-radius:4px; background: var(--bg-darkest); object-fit:cover;" alt="icon">`
+        : `<div style="width:32px; height:32px; border-radius:4px; background: var(--bg-darkest);"></div>`}
       <div class="modal-item-info">
         <span class="modal-item-name">${game.name}</span>
         <span class="modal-item-exe">${game.exe}</span>

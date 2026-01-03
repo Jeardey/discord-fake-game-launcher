@@ -26,7 +26,8 @@ function getUserDataPaths() {
     myGamesPath: path.join(userData, 'myGames.json'),
     gameListPath: path.join(userData, 'gamelist.json'),
     gamesRoot: path.join(userData, 'games'),
-    updateStatePath: path.join(userData, 'updateState.json')
+    updateStatePath: path.join(userData, 'updateState.json'),
+    iconCacheDir: path.join(userData, 'cache', 'icons')
   };
 }
 
@@ -36,6 +37,16 @@ function sanitizeFolderName(name) {
     .replace(/[\u0000-\u001F]/g, '_')
     .trim()
     .slice(0, 128);
+}
+
+function discordCdnAppIconUrl(appId, iconHash, size) {
+  const id = String(appId || '').trim();
+  const hash = String(iconHash || '').trim();
+  const s = Number.isFinite(size) ? size : 64;
+
+  if (!id || !hash) return null;
+  // Discord application icon CDN
+  return `https://cdn.discordapp.com/app-icons/${encodeURIComponent(id)}/${encodeURIComponent(hash)}.png?size=${s}`;
 }
 
 function normalizeExeRelPath(exeName) {
@@ -63,11 +74,19 @@ function toDatabaseGames(detectableApps) {
     const bestExe = pickBestExecutable(appEntry);
     if (!bestExe?.name) continue;
 
+    const appId = String(appEntry.id || '');
+    const iconHash = typeof appEntry.icon === 'string' ? appEntry.icon : null;
+
+    const iconUrl = discordCdnAppIconUrl(appId, iconHash, 64);
+    const thumbnailUrl = discordCdnAppIconUrl(appId, iconHash, 1024);
+
     result.push({
-      id: String(appEntry.id || ''),
+      id: appId,
       name: String(appEntry.name),
       exe: String(bestExe.name),
       isLauncher: Boolean(bestExe.is_launcher),
+      iconUrl,
+      thumbnailUrl,
       _nameLower: String(appEntry.name).toLowerCase()
     });
   }
@@ -113,7 +132,9 @@ function pageDatabaseGames({ filter, offset, limit }) {
         id: g.id,
         name: g.name,
         exe: g.exe,
-        isLauncher: g.isLauncher
+        isLauncher: g.isLauncher,
+        iconUrl: g.iconUrl,
+        thumbnailUrl: g.thumbnailUrl
       });
     }
 
@@ -401,6 +422,57 @@ function setWindowIconFromDataUrl(dataUrl) {
   }
 }
 
+async function downloadUrlToFile(url, filePath) {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'DiscordFakeGameLauncherUI/0.1.0',
+      'Accept': 'image/*'
+    }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  await fsp.writeFile(filePath, buf);
+}
+
+async function setWindowIconFromAny(iconValue) {
+  if (!mainWindow) return;
+  if (!iconValue) return;
+
+  const val = String(iconValue);
+
+  // data: URL
+  if (val.startsWith('data:image/')) {
+    setWindowIconFromDataUrl(val);
+    return;
+  }
+
+  // http(s): cache locally then set icon from path
+  if (val.startsWith('http://') || val.startsWith('https://')) {
+    const paths = getUserDataPaths();
+    ensureDirSync(paths.iconCacheDir);
+
+    // Use a stable filename based on the URL
+    const safe = sanitizeFolderName(val).slice(0, 80);
+    const filePath = path.join(paths.iconCacheDir, safe + '.png');
+
+    try {
+      if (!fs.existsSync(filePath)) {
+        await downloadUrlToFile(val, filePath);
+      }
+      const img = nativeImage.createFromPath(filePath);
+      if (!img.isEmpty()) mainWindow.setIcon(img);
+    } catch {
+      // ignore icon failures
+    }
+
+    return;
+  }
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -480,8 +552,12 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
     name: String(game?.name || 'Game'),
     exe: String(game?.exe || ''),
     isFavorite: false,
-    icon: makePlaceholderIconDataUrl(game?.name),
-    thumbnail: makePlaceholderThumbnailDataUrl(game?.name)
+    icon: typeof game?.iconUrl === 'string' && game.iconUrl
+      ? game.iconUrl
+      : makePlaceholderIconDataUrl(game?.name),
+    thumbnail: typeof game?.thumbnailUrl === 'string' && game.thumbnailUrl
+      ? game.thumbnailUrl
+      : makePlaceholderThumbnailDataUrl(game?.name)
   };
 
   // Avoid duplicates by (appId + exe)
@@ -533,7 +609,7 @@ ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
 
 ipcMain.handle('launcher/selectGame', async (_evt, game) => {
   // Set taskbar icon to selected game icon (Windows)
-  if (game?.icon) setWindowIconFromDataUrl(game.icon);
+  if (game?.icon) await setWindowIconFromAny(game.icon);
   return true;
 });
 
