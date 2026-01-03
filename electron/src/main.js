@@ -537,7 +537,27 @@ ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter, offset, limit
 ipcMain.handle('launcher/getMyGames', async () => {
   const paths = getUserDataPaths();
   const list = await readJsonIfExists(paths.myGamesPath, []);
-  return Array.isArray(list) ? list : [];
+  const safeList = Array.isArray(list) ? list : [];
+
+  // Migration/fallback: older files (or manual edits) may not have icon/thumbnail.
+  let changed = false;
+  for (const g of safeList) {
+    const name = g?.name;
+    if (typeof g?.icon !== 'string' || !g.icon) {
+      g.icon = makePlaceholderIconDataUrl(name);
+      changed = true;
+    }
+    if (typeof g?.thumbnail !== 'string' || !g.thumbnail) {
+      g.thumbnail = makePlaceholderThumbnailDataUrl(name);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    try { await writeJson(paths.myGamesPath, safeList); } catch { /* ignore */ }
+  }
+
+  return safeList;
 });
 
 ipcMain.handle('launcher/addGame', async (_evt, game) => {
@@ -547,17 +567,20 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
   const myGames = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(myGames) ? myGames : [];
 
+  const fallbackIcon = makePlaceholderIconDataUrl(game?.name);
+  const fallbackThumb = makePlaceholderThumbnailDataUrl(game?.name);
+
+  const iconFromDiscord = typeof game?.iconUrl === 'string' && game.iconUrl ? game.iconUrl : null;
+  const thumbFromDiscord = typeof game?.thumbnailUrl === 'string' && game.thumbnailUrl ? game.thumbnailUrl : null;
+
   const entry = {
     appId: String(game?.id || ''),
     name: String(game?.name || 'Game'),
     exe: String(game?.exe || ''),
     isFavorite: false,
-    icon: typeof game?.iconUrl === 'string' && game.iconUrl
-      ? game.iconUrl
-      : makePlaceholderIconDataUrl(game?.name),
-    thumbnail: typeof game?.thumbnailUrl === 'string' && game.thumbnailUrl
-      ? game.thumbnailUrl
-      : makePlaceholderThumbnailDataUrl(game?.name)
+    icon: iconFromDiscord || fallbackIcon,
+    // If Discord has an icon but not a dedicated thumbnail, reuse the icon (bigger) as a thumbnail.
+    thumbnail: thumbFromDiscord || iconFromDiscord || fallbackThumb
   };
 
   // Avoid duplicates by (appId + exe)

@@ -2,6 +2,33 @@
 
 const starSvg = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
+function placeholderIconDataUrl(name) {
+  const letter = (String(name || '?').trim()[0] || '?').toUpperCase();
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">\
+  <rect width="64" height="64" rx="12" ry="12" fill="#202225"/>\
+  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial" font-size="34" font-weight="700" fill="#ffffff">${letter}</text>\
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function placeholderThumbDataUrl(name) {
+  const safe = String(name || 'Game').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">\
+  <defs>\
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\
+      <stop offset="0" stop-color="#2f3136"/>\
+      <stop offset="1" stop-color="#202225"/>\
+    </linearGradient>\
+  </defs>\
+  <rect width="1200" height="600" fill="url(#g)"/>\
+  <text x="60" y="330" font-family="Segoe UI, Arial" font-size="72" font-weight="700" fill="#ffffff" opacity="0.9">${safe}</text>\
+  <text x="60" y="390" font-family="Consolas, monospace" font-size="28" fill="#b9bbbe" opacity="0.9">Fake Game Launcher</text>\
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 let myGames = [];
 let selectedGame = null;
 let isRunning = false;
@@ -89,7 +116,7 @@ function renderMainList(filter = '') {
     div.className = `game-item ${selectedGame === game ? 'active' : ''} ${game.isFavorite ? 'favorite' : ''}`;
 
     div.innerHTML = `
-      <img src="${game.icon}" class="game-icon-img" alt="icon">
+      <img src="${game.icon}" class="game-icon-img" alt="icon" onerror="this.onerror=null; this.src='${placeholderIconDataUrl(game.name)}';">
       <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
@@ -189,8 +216,14 @@ async function selectGame(game) {
   document.getElementById('heroTitle').innerText = game.name;
   document.getElementById('heroExe').innerText = game.exe;
 
-  heroThumbnail.src = game.thumbnail;
-  setSelectedBackground(game.thumbnail);
+  const thumb = game.thumbnail || placeholderThumbDataUrl(game.name);
+  heroThumbnail.src = thumb;
+  heroThumbnail.onerror = () => {
+    heroThumbnail.onerror = null;
+    heroThumbnail.src = placeholderThumbDataUrl(game.name);
+  };
+
+  setSelectedBackground(thumb);
 
   await launcherApi.selectGame(game);
 
