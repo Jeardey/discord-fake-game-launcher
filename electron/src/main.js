@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -26,8 +26,7 @@ function getUserDataPaths() {
     myGamesPath: path.join(userData, 'myGames.json'),
     gameListPath: path.join(userData, 'gamelist.json'),
     gamesRoot: path.join(userData, 'games'),
-    updateStatePath: path.join(userData, 'updateState.json'),
-    iconCacheDir: path.join(userData, 'cache', 'icons')
+    updateStatePath: path.join(userData, 'updateState.json')
   };
 }
 
@@ -37,16 +36,6 @@ function sanitizeFolderName(name) {
     .replace(/[\u0000-\u001F]/g, '_')
     .trim()
     .slice(0, 128);
-}
-
-function discordCdnAppIconUrl(appId, iconHash, size) {
-  const id = String(appId || '').trim();
-  const hash = String(iconHash || '').trim();
-  const s = Number.isFinite(size) ? size : 64;
-
-  if (!id || !hash) return null;
-  // Discord application icon CDN
-  return `https://cdn.discordapp.com/app-icons/${encodeURIComponent(id)}/${encodeURIComponent(hash)}.png?size=${s}`;
 }
 
 function normalizeExeRelPath(exeName) {
@@ -75,18 +64,12 @@ function toDatabaseGames(detectableApps) {
     if (!bestExe?.name) continue;
 
     const appId = String(appEntry.id || '');
-    const iconHash = typeof appEntry.icon === 'string' ? appEntry.icon : null;
-
-    const iconUrl = discordCdnAppIconUrl(appId, iconHash, 64);
-    const thumbnailUrl = discordCdnAppIconUrl(appId, iconHash, 1024);
 
     result.push({
       id: appId,
       name: String(appEntry.name),
       exe: String(bestExe.name),
       isLauncher: Boolean(bestExe.is_launcher),
-      iconUrl,
-      thumbnailUrl,
       _nameLower: String(appEntry.name).toLowerCase()
     });
   }
@@ -132,9 +115,7 @@ function pageDatabaseGames({ filter, offset, limit }) {
         id: g.id,
         name: g.name,
         exe: g.exe,
-        isLauncher: g.isLauncher,
-        iconUrl: g.iconUrl,
-        thumbnailUrl: g.thumbnailUrl
+        isLauncher: g.isLauncher
       });
     }
 
@@ -206,32 +187,6 @@ async function syncGameList(gameListPath) {
   return { updated: false };
 }
 
-function makePlaceholderIconDataUrl(gameName) {
-  const letter = (String(gameName || '?').trim()[0] || '?').toUpperCase();
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">\
-  <rect width="256" height="256" rx="48" ry="48" fill="#202225"/>\
-  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial" font-size="140" font-weight="700" fill="#ffffff">${letter}</text>\
-</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function makePlaceholderThumbnailDataUrl(gameName) {
-  const safe = String(gameName || 'Game').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>\
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">\
-  <defs>\
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\
-      <stop offset="0" stop-color="#2f3136"/>\
-      <stop offset="1" stop-color="#202225"/>\
-    </linearGradient>\
-  </defs>\
-  <rect width="1200" height="600" fill="url(#g)"/>\
-  <text x="60" y="330" font-family="Segoe UI, Arial" font-size="72" font-weight="700" fill="#ffffff" opacity="0.9">${safe}</text>\
-  <text x="60" y="390" font-family="Consolas, monospace" font-size="28" fill="#b9bbbe" opacity="0.9">Fake Game Launcher</text>\
-</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
 
 async function findDummyGameTemplate() {
   if (process.env.DUMMYGAME_EXE && fs.existsSync(process.env.DUMMYGAME_EXE)) {
@@ -412,66 +367,6 @@ async function maybeCheckForUpdates() {
   }
 }
 
-function setWindowIconFromDataUrl(dataUrl) {
-  if (!mainWindow) return;
-  try {
-    const img = nativeImage.createFromDataURL(dataUrl);
-    if (!img.isEmpty()) mainWindow.setIcon(img);
-  } catch {
-    // ignore
-  }
-}
-
-async function downloadUrlToFile(url, filePath) {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'DiscordFakeGameLauncherUI/0.1.0',
-      'Accept': 'image/*'
-    }
-  });
-
-  if (!res.ok) {
-    throw new Error(`Download failed: ${res.status} ${res.statusText}`);
-  }
-
-  const buf = Buffer.from(await res.arrayBuffer());
-  await fsp.writeFile(filePath, buf);
-}
-
-async function setWindowIconFromAny(iconValue) {
-  if (!mainWindow) return;
-  if (!iconValue) return;
-
-  const val = String(iconValue);
-
-  // data: URL
-  if (val.startsWith('data:image/')) {
-    setWindowIconFromDataUrl(val);
-    return;
-  }
-
-  // http(s): cache locally then set icon from path
-  if (val.startsWith('http://') || val.startsWith('https://')) {
-    const paths = getUserDataPaths();
-    ensureDirSync(paths.iconCacheDir);
-
-    // Use a stable filename based on the URL
-    const safe = sanitizeFolderName(val).slice(0, 80);
-    const filePath = path.join(paths.iconCacheDir, safe + '.png');
-
-    try {
-      if (!fs.existsSync(filePath)) {
-        await downloadUrlToFile(val, filePath);
-      }
-      const img = nativeImage.createFromPath(filePath);
-      if (!img.isEmpty()) mainWindow.setIcon(img);
-    } catch {
-      // ignore icon failures
-    }
-
-    return;
-  }
-}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -539,20 +434,15 @@ ipcMain.handle('launcher/getMyGames', async () => {
   const list = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(list) ? list : [];
 
-  // Migration/fallback: older files (or manual edits) may not have icon/thumbnail.
+  // Privacy/safety: remove any persisted artwork fields from older versions.
   let changed = false;
   for (const g of safeList) {
-    const name = g?.name;
-    if (typeof g?.icon !== 'string' || !g.icon) {
-      g.icon = makePlaceholderIconDataUrl(name);
-      changed = true;
-    }
-    if (typeof g?.thumbnail !== 'string' || !g.thumbnail) {
-      g.thumbnail = makePlaceholderThumbnailDataUrl(name);
-      changed = true;
+    if (g && typeof g === 'object') {
+      if (Object.prototype.hasOwnProperty.call(g, 'icon')) { delete g.icon; changed = true; }
+      if (Object.prototype.hasOwnProperty.call(g, 'thumbnail')) { delete g.thumbnail; changed = true; }
+      if (Object.prototype.hasOwnProperty.call(g, 'igdbId')) { delete g.igdbId; changed = true; }
     }
   }
-
   if (changed) {
     try { await writeJson(paths.myGamesPath, safeList); } catch { /* ignore */ }
   }
@@ -567,20 +457,11 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
   const myGames = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(myGames) ? myGames : [];
 
-  const fallbackIcon = makePlaceholderIconDataUrl(game?.name);
-  const fallbackThumb = makePlaceholderThumbnailDataUrl(game?.name);
-
-  const iconFromDiscord = typeof game?.iconUrl === 'string' && game.iconUrl ? game.iconUrl : null;
-  const thumbFromDiscord = typeof game?.thumbnailUrl === 'string' && game.thumbnailUrl ? game.thumbnailUrl : null;
-
   const entry = {
     appId: String(game?.id || ''),
     name: String(game?.name || 'Game'),
     exe: String(game?.exe || ''),
-    isFavorite: false,
-    icon: iconFromDiscord || fallbackIcon,
-    // If Discord has an icon but not a dedicated thumbnail, reuse the icon (bigger) as a thumbnail.
-    thumbnail: thumbFromDiscord || iconFromDiscord || fallbackThumb
+    isFavorite: false
   };
 
   // Avoid duplicates by (appId + exe)
@@ -631,8 +512,7 @@ ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
 });
 
 ipcMain.handle('launcher/selectGame', async (_evt, game) => {
-  // Set taskbar icon to selected game icon (Windows)
-  if (game?.icon) await setWindowIconFromAny(game.icon);
+  // No per-game icons/thumbnails in the public build.
   return true;
 });
 
