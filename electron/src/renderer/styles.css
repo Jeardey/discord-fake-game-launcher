@@ -27,7 +27,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Ubuntu', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background-color: var(--bg-main);
   color: var(--text-normal);
   height: 100vh;
@@ -235,6 +235,9 @@ body {
 
 .game-hero-title { font-size: 3rem; font-weight: 800; color: var(--text-header); margin: 0; line-height: 1; }
 .game-hero-subtitle { font-size: 1rem; color: var(--text-muted); margin-top: 8px; font-family: 'Consolas', monospace; }
+
+/* Keep exe/path-like values monospace */
+#detailExe { font-family: 'Consolas', monospace; }
 
 .status-indicator {
   display: inline-flex;
