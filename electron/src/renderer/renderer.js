@@ -112,6 +112,7 @@ function openGameContextMenu(game, x, y) {
   if (!game) return;
 
   contextMenuEl.innerHTML = `
+    <div class="context-menu-item" id="ctxShortcut">Create shortcut</div>
     <div class="context-menu-item danger" id="ctxDelete">Delete from library</div>
   `;
 
@@ -137,7 +138,22 @@ function openGameContextMenu(game, x, y) {
     contextMenuEl.style.top = `${top}px`;
   });
 
+  const shortcutBtn = document.getElementById('ctxShortcut');
   const deleteBtn = document.getElementById('ctxDelete');
+
+  shortcutBtn.addEventListener('click', async () => {
+    closeContextMenu();
+    log(`Creating shortcut for ${game.name}...`);
+
+    const r = await launcherApi.createShortcut(game.appId, game.exe);
+    if (!r?.ok) {
+      log(`Shortcut failed: ${r?.error || 'unknown error'}`, 'log-danger');
+      return;
+    }
+
+    log(`Shortcut created: ${r.path}`, 'log-success');
+  });
+
   deleteBtn.addEventListener('click', async () => {
     // Avoid deleting the currently running selection
     if (isRunning && selectedGame && selectedGame.appId === game.appId && selectedGame.exe === game.exe) {

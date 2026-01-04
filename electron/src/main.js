@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -509,6 +509,59 @@ ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
   }
 
   return { ok: true, removed: before - filtered.length };
+});
+
+ipcMain.handle('launcher/createShortcut', async (_evt, { appId, exe }) => {
+  if (process.platform !== 'win32') {
+    return { ok: false, error: 'Shortcuts are only supported on Windows.' };
+  }
+
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+
+  const myGames = await readJsonIfExists(paths.myGamesPath, []);
+  const safeList = Array.isArray(myGames) ? myGames : [];
+
+  const game = safeList.find(g =>
+    String(g?.appId || '') === String(appId || '') &&
+    String(g?.exe || '') === String(exe || '')
+  );
+
+  if (!game) return { ok: false, error: 'Game not found in library.' };
+
+  try {
+    const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
+    const desktopDir = app.getPath('desktop');
+
+    const baseName = sanitizeFolderName(game.name || path.basename(destExePath, path.extname(destExePath))) || 'Game';
+    let shortcutPath = path.join(desktopDir, `${baseName}.lnk`);
+
+    // Avoid overwriting existing shortcuts: Game.lnk, Game (2).lnk, ...
+    if (fs.existsSync(shortcutPath)) {
+      for (let i = 2; i < 1000; i++) {
+        const candidate = path.join(desktopDir, `${baseName} (${i}).lnk`);
+        if (!fs.existsSync(candidate)) {
+          shortcutPath = candidate;
+          break;
+        }
+      }
+    }
+
+    const displayName = String(game?.name || path.basename(destExePath));
+    const escaped = displayName.replace(/"/g, '\\"');
+    const args = `"${escaped}"`;
+
+    const ok = shell.writeShortcutLink(shortcutPath, {
+      target: destExePath,
+      cwd: workingDirectory,
+      args
+    });
+
+    if (!ok) return { ok: false, error: 'Failed to create shortcut.' };
+    return { ok: true, path: shortcutPath };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || 'Failed to create shortcut') };
+  }
 });
 
 ipcMain.handle('launcher/selectGame', async (_evt, game) => {
