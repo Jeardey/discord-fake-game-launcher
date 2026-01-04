@@ -12,14 +12,14 @@ Can be used for completing Discord Quests without installing the game.
 - Lets you search and pick one.
 - Creates a dummy exe in:
 
-  `./games/<GameNameWithoutExt>/<GameName>.exe`
+  `%APPDATA%/discord-fake-game-launcher-ui/games/dummygame/<GameID>/<GameName>.exe`
 
 - Launches that dummy exe.  
   Discord detects it as if the real game is running.
 
 The same executable acts as:
 
-- **Launcher** when run from the root folder.
+- **Launcher** when run from the shortcut or from root folder.
 - **Fake game** when run from a subfolder inside `games/`.
 
 ## Build
