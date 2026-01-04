@@ -38,6 +38,11 @@ const updateNotes = document.getElementById('updateNotes');
 const updateInstallBtn = document.getElementById('updateInstallBtn');
 const updateRemindBtn = document.getElementById('updateRemindBtn');
 
+// Details panel
+const detailAppId = document.getElementById('detailAppId');
+const detailExe = document.getElementById('detailExe');
+const detailFavorite = document.getElementById('detailFavorite');
+const detailRunning = document.getElementById('detailRunning');
 let updateUiState = {
   visible: false,
   installing: false
@@ -62,6 +67,27 @@ function resetHeroState() {
   document.getElementById('launchBtnText').innerText = 'Launch Game';
   document.getElementById('playIcon').style.display = 'block';
   document.getElementById('stopIcon').style.display = 'none';
+
+  updateDetailsPanel();
+}
+
+function updateDetailsPanel() {
+  const dash = '—';
+
+  if (!detailAppId || !detailExe || !detailFavorite || !detailRunning) return;
+
+  if (!selectedGame) {
+    detailAppId.textContent = dash;
+    detailExe.textContent = dash;
+    detailFavorite.textContent = dash;
+    detailRunning.textContent = dash;
+    return;
+  }
+
+  detailAppId.textContent = selectedGame.appId || dash;
+  detailExe.textContent = selectedGame.exe || dash;
+  detailFavorite.textContent = selectedGame.isFavorite ? 'Yes' : 'No';
+  detailRunning.textContent = isRunning ? 'Yes' : 'No';
 }
 
 // No background thumbnails in the public build.
@@ -172,6 +198,7 @@ function openGameContextMenu(game, x, y) {
       heroEmptyState.style.display = 'flex';
       heroContent.style.display = 'none';
       renderMainList(searchInput.value);
+      updateDetailsPanel();
     }
 
     log(`Deleted ${game.name} from library.`, 'log-success');
@@ -183,6 +210,11 @@ async function toggleFavorite(game) {
   if (updated) {
     game.isFavorite = updated.isFavorite;
     renderMainList(searchInput.value);
+
+    if (selectedGame && selectedGame.appId === game.appId && selectedGame.exe === game.exe) {
+      selectedGame.isFavorite = updated.isFavorite;
+      updateDetailsPanel();
+    }
   }
 }
 
@@ -195,6 +227,8 @@ async function selectGame(game) {
 
   document.getElementById('heroTitle').innerText = game.name;
   document.getElementById('heroExe').innerText = game.exe;
+
+  updateDetailsPanel();
 
   await launcherApi.selectGame(game);
 
@@ -250,6 +284,7 @@ function debounce(fn, waitMs) {
 }
 
 function resetAndRenderModal(filter) {
+    updateDetailsPanel();
   modalState = {
     filter: String(filter || ''),
     offset: 0,
@@ -271,6 +306,7 @@ async function renderNextModalPage() {
   } catch (e) {
     modalState.loading = false;
     modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Try again. (${String(e.message || e)})</div>`;
+      updateDetailsPanel();
     return;
   }
 
@@ -281,6 +317,7 @@ async function renderNextModalPage() {
     if (myGames.some(mg => mg.appId === game.id && mg.exe === game.exe)) continue;
 
     const div = document.createElement('div');
+    updateDetailsPanel();
     div.className = 'modal-item';
     div.innerHTML = `
       <div class="modal-item-info">
@@ -440,6 +477,7 @@ launcherApi.onGameExited(() => {
   isRunning = false;
   resetHeroState();
   log('Process exited.', 'log-danger');
+  updateDetailsPanel();
 });
 
 (async function init() {
