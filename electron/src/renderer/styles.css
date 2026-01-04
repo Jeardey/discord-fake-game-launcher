@@ -257,6 +257,57 @@ body {
   transition: all 0.3s;
 }
 
+.details-panel {
+  background-color: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.details-title {
+  font-weight: 800;
+  color: var(--text-header);
+  margin-bottom: 10px;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.details-item {
+  background-color: rgba(0,0,0,0.12);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.details-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.details-value {
+  font-size: 13px;
+  color: var(--text-normal);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .details-grid { grid-template-columns: 1fr; }
+}
+
 .hero-thumbnail-container {
   width: 100%;
   height: 300px;
