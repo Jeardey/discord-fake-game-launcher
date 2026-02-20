@@ -38,6 +38,16 @@ function sanitizeFolderName(name) {
     .slice(0, 128);
 }
 
+function fallbackExeNameFromTitle(name) {
+  const base = sanitizeFolderName(String(name || 'Game'))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+
+  const safeBase = base || 'Game';
+  return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
+}
+
 function normalizeExeRelPath(exeName) {
   return (exeName || '')
     .replace(/\\/g, path.sep)
@@ -61,15 +71,15 @@ function toDatabaseGames(detectableApps) {
   for (const appEntry of detectableApps || []) {
     if (!appEntry?.name) continue;
     const bestExe = pickBestExecutable(appEntry);
-    if (!bestExe?.name) continue;
 
     const appId = String(appEntry.id || '');
+    const exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
 
     result.push({
       id: appId,
       name: String(appEntry.name),
-      exe: String(bestExe.name),
-      isLauncher: Boolean(bestExe.is_launcher),
+      exe: exeName,
+      isLauncher: Boolean(bestExe?.is_launcher),
       _nameLower: String(appEntry.name).toLowerCase()
     });
   }
