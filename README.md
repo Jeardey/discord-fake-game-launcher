@@ -34,3 +34,14 @@ You need the .NET SDK (8.0+ recommended).
 
 ```bash
 dotnet build ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj -c Release
+```
+
+### Building the Electron UI
+
+```bash
+cd electron
+npm install
+npm run dist
+```
+
+The installer will be created in `electron/dist/`.
