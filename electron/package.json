@@ -28,7 +28,9 @@
     "dist:win": "electron-builder --win nsis --publish never",
     "dist:linux": "electron-builder --linux AppImage deb rpm --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:publish": "electron-builder --win nsis --publish always"
+    "dist:publish": "npm run dist:publish:win",
+    "dist:publish:win": "electron-builder --win nsis --publish always",
+    "dist:publish:linux": "electron-builder --linux AppImage deb rpm --publish always"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -57,11 +59,13 @@
       }
     ],
     "win": {
+      "artifactName": "${productName} Setup.${ext}",
       "target": [
         "nsis"
       ]
     },
     "linux": {
+      "artifactName": "${productName}-${arch}.${ext}",
       "target": [
         "AppImage",
         "deb",

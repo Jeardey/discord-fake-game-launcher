@@ -55,6 +55,10 @@ function getDummyBinaryName() {
   return process.platform === 'win32' ? 'DummyGame.exe' : 'DummyGame';
 }
 
+function isWindowsExecutableName(exeName) {
+  return String(exeName || '').trim().toLowerCase().endsWith('.exe');
+}
+
 function fallbackExeNameFromTitle(name) {
   const base = sanitizeFolderName(String(name || 'Game'))
     .replace(/\s+/g, ' ')
@@ -75,17 +79,51 @@ function normalizeExeRelPath(exeName) {
     .replace(/\//g, path.sep);
 }
 
+function normalizeGameExeForCurrentPlatform(exeName, gameName) {
+  const rawExe = String(exeName || '').trim();
+  const fallback = fallbackExeNameFromTitle(gameName);
+
+  if (!rawExe) return fallback;
+
+  const normalized = normalizeExeRelPath(rawExe);
+
+  if (process.platform === 'win32') {
+    return normalized;
+  }
+
+  const parsed = path.parse(normalized);
+  if (parsed.ext && parsed.ext.toLowerCase() === '.exe') {
+    const withoutExt = path.join(parsed.dir, parsed.name);
+    return withoutExt || fallback;
+  }
+
+  return normalized;
+}
+
+function isExecutableNameSupportedOnCurrentPlatform(exeName) {
+  if (process.platform === 'win32') return true;
+  return !isWindowsExecutableName(exeName);
+}
+
 function pickBestExecutable(appEntry) {
   const exes = Array.isArray(appEntry.executables) ? appEntry.executables : [];
   const preferredTags = getPreferredDiscordOsTags();
 
-  const nonLauncherPreferred = exes.find(e =>
-    preferredTags.includes(String(e?.os || '').toLowerCase()) && !e?.is_launcher && e?.name);
+  const preferredMatches = exes.filter(e =>
+    preferredTags.includes(String(e?.os || '').toLowerCase()) && e?.name);
+
+  const preferredSupported = preferredMatches.filter(e =>
+    isExecutableNameSupportedOnCurrentPlatform(e.name));
+
+  const nonLauncherPreferred = preferredSupported.find(e => !e?.is_launcher);
   if (nonLauncherPreferred) return nonLauncherPreferred;
 
-  const anyPreferred = exes.find(e =>
-    preferredTags.includes(String(e?.os || '').toLowerCase()) && e?.name);
+  const anyPreferred = preferredSupported[0];
   if (anyPreferred) return anyPreferred;
+
+  if (process.platform !== 'win32') {
+    return null;
+  }
 
   const nonLauncherAny = exes.find(e => !e?.is_launcher && e?.name);
   if (nonLauncherAny) return nonLauncherAny;
@@ -100,7 +138,8 @@ function toDatabaseGames(detectableApps) {
     const bestExe = pickBestExecutable(appEntry);
 
     const appId = String(appEntry.id || '');
-    const exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
+    const rawExeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
+    const exeName = normalizeGameExeForCurrentPlatform(rawExeName, appEntry.name);
 
     result.push({
       id: appId,
@@ -300,34 +339,41 @@ async function ensureFakeExeForGame(game, paths) {
   const exeRelPath = normalizeExeRelPath(game.exe);
   const exeFolderPart = path.dirname(exeRelPath) === '.' ? '' : path.dirname(exeRelPath);
   const exeFileName = path.basename(exeRelPath);
+  const targetExeBase = path.basename(exeFileName, path.extname(exeFileName));
 
   const gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
   ensureDirSync(gameFolder);
 
   const destExePath = path.join(gameFolder, exeFileName);
 
+  const sourceDir = path.dirname(dummySourceExe);
+  const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
+
   if (!fs.existsSync(destExePath)) {
     // Copy main exe but rename to target exe file name
     await fsp.copyFile(dummySourceExe, destExePath);
+  }
 
-    // Copy sidecar files DummyGame.* from source dir
-    const sourceDir = path.dirname(dummySourceExe);
-    const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
+  const sidecars = await fsp.readdir(sourceDir);
+  for (const fileName of sidecars) {
+    if (!fileName.toLowerCase().startsWith(dummyBase.toLowerCase() + '.')) continue;
+    if (fileName.toLowerCase() === path.basename(dummySourceExe).toLowerCase()) continue;
 
-    const sidecars = await fsp.readdir(sourceDir);
-    for (const fileName of sidecars) {
-      if (!fileName.toLowerCase().startsWith(dummyBase.toLowerCase() + '.')) continue;
-      if (fileName.toLowerCase() === path.basename(dummySourceExe).toLowerCase()) continue;
+    const src = path.join(sourceDir, fileName);
+    const suffix = fileName.slice(dummyBase.length);
+    const renamedFileName = `${targetExeBase}${suffix}`;
+    const dest = path.join(gameFolder, renamedFileName);
 
-      const src = path.join(sourceDir, fileName);
-      const dest = path.join(gameFolder, fileName);
-      if (!fs.existsSync(dest)) {
-        await fsp.copyFile(src, dest);
-      }
+    if (!fs.existsSync(dest)) {
+      await fsp.copyFile(src, dest);
     }
+  }
 
-    if (process.platform !== 'win32') {
+  if (process.platform !== 'win32') {
+    try {
       await fsp.chmod(destExePath, 0o755);
+    } catch {
+      // ignore chmod failures
     }
   }
 
@@ -491,6 +537,12 @@ ipcMain.handle('launcher/getMyGames', async () => {
       if (Object.prototype.hasOwnProperty.call(g, 'icon')) { delete g.icon; changed = true; }
       if (Object.prototype.hasOwnProperty.call(g, 'thumbnail')) { delete g.thumbnail; changed = true; }
       if (Object.prototype.hasOwnProperty.call(g, 'igdbId')) { delete g.igdbId; changed = true; }
+
+      const normalizedExe = normalizeGameExeForCurrentPlatform(g.exe, g.name);
+      if (String(g.exe || '') !== normalizedExe) {
+        g.exe = normalizedExe;
+        changed = true;
+      }
     }
   }
   if (changed) {
@@ -510,7 +562,7 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
   const entry = {
     appId: String(game?.id || ''),
     name: String(game?.name || 'Game'),
-    exe: String(game?.exe || ''),
+    exe: normalizeGameExeForCurrentPlatform(String(game?.exe || ''), String(game?.name || 'Game')),
     isFavorite: false
   };
 
@@ -627,9 +679,14 @@ ipcMain.handle('launcher/launchGame', async (_evt, game) => {
   const paths = getUserDataPaths();
   ensureDirSync(paths.userData);
 
-  const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
+  const normalizedGame = {
+    ...game,
+    exe: normalizeGameExeForCurrentPlatform(game?.exe, game?.name)
+  };
 
-  const displayName = String(game?.name || path.basename(destExePath));
+  const { destExePath, workingDirectory } = await ensureFakeExeForGame(normalizedGame, paths);
+
+  const displayName = String(normalizedGame?.name || path.basename(destExePath));
 
   runningProc = spawn(destExePath, [displayName], {
     cwd: workingDirectory,

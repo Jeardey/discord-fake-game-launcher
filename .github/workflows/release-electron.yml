@@ -9,7 +9,40 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: ver
+        shell: bash
+        run: |
+          tag="${{ github.ref_name }}"
+          if [[ "$tag" =~ ^release_([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "Version: $version"
+          else
+            echo "Tag '$tag' does not match release_X.Y.Z" >&2
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Discord Fake Game Launcher ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  publish-windows:
+    needs: create-release
     runs-on: windows-latest
 
     steps:
@@ -26,34 +59,6 @@ jobs:
         with:
           node-version: '20.x'
 
-      - name: Extract version from tag
-        id: ver
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          if ($tag -match '^release_(\d+\.\d+\.\d+)$') {
-            $version = $Matches[1]
-            "version=$version" >> $env:GITHUB_OUTPUT
-            Write-Host "Version: $version"
-          } else {
-            Write-Error "Tag '$tag' does not match release_X.Y.Z"
-            exit 1
-          }
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Discord Fake Game Launcher ${{ steps.ver.outputs.version }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-
-      - name: Publish DummyGame for bundling
-        run: |
-          dotnet restore ./src/DummyGame/DummyGame.csproj
-          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
-
       - name: Install Electron dependencies
         run: |
           cd electron
@@ -62,14 +67,66 @@ jobs:
       - name: Set Electron app version
         shell: pwsh
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
+          $v = "${{ needs.create-release.outputs.version }}"
           Push-Location electron
           npm version $v --no-git-tag-version
           Pop-Location
+
+      - name: Build and stage DummyGame (Windows)
+        run: |
+          cd electron
+          npm run build:dummy:win
+          npm run prepare:dummy:win
 
       - name: Build and publish installer + latest.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd electron
-          npm run dist:publish
+          npm run dist:publish:win
+
+  publish-linux:
+    needs: create-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm install --no-audit --no-fund
+
+      - name: Set Electron app version
+        run: |
+          cd electron
+          npm version "${{ needs.create-release.outputs.version }}" --no-git-tag-version
+
+      - name: Build and stage DummyGame (Linux)
+        run: |
+          cd electron
+          npm run build:dummy:linux
+          npm run prepare:dummy:linux
+
+      - name: Build and publish Linux packages + latest-linux.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd electron
+          npm run dist:publish:linux
