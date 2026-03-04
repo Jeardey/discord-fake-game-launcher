@@ -1,0 +1,83 @@
+name: Build Cross Platform
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            dummyScript: build:dummy:win
+            prepareScript: prepare:dummy:win
+            distScript: dist:win
+            artifactName: windows-dist
+            artifactPattern: |
+              electron/dist/*.exe
+              electron/dist/*.yml
+              electron/dist/*.blockmap
+          - name: Linux
+            os: ubuntu-latest
+            dummyScript: build:dummy:linux
+            prepareScript: prepare:dummy:linux
+            distScript: dist:linux
+            artifactName: linux-dist
+            artifactPattern: |
+              electron/dist/*.AppImage
+              electron/dist/*.deb
+              electron/dist/*.rpm
+              electron/dist/latest-linux.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Install npm dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build DummyGame
+        working-directory: electron
+        run: npm run ${{ matrix.dummyScript }}
+
+      - name: Stage DummyGame resources
+        working-directory: electron
+        run: npm run ${{ matrix.prepareScript }}
+
+      - name: Build Electron distributables
+        working-directory: electron
+        run: npm run ${{ matrix.distScript }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactPattern }}
+          if-no-files-found: error

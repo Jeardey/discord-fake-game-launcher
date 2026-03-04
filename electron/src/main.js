@@ -38,6 +38,23 @@ function sanitizeFolderName(name) {
     .slice(0, 128);
 }
 
+function getPreferredDiscordOsTags() {
+  switch (process.platform) {
+    case 'win32':
+      return ['win32'];
+    case 'linux':
+      return ['linux'];
+    case 'darwin':
+      return ['osx', 'darwin', 'macos'];
+    default:
+      return ['win32'];
+  }
+}
+
+function getDummyBinaryName() {
+  return process.platform === 'win32' ? 'DummyGame.exe' : 'DummyGame';
+}
+
 function fallbackExeNameFromTitle(name) {
   const base = sanitizeFolderName(String(name || 'Game'))
     .replace(/\s+/g, ' ')
@@ -45,7 +62,11 @@ function fallbackExeNameFromTitle(name) {
     .slice(0, 120);
 
   const safeBase = base || 'Game';
-  return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
+  if (process.platform === 'win32') {
+    return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
+  }
+
+  return safeBase;
 }
 
 function normalizeExeRelPath(exeName) {
@@ -56,14 +77,20 @@ function normalizeExeRelPath(exeName) {
 
 function pickBestExecutable(appEntry) {
   const exes = Array.isArray(appEntry.executables) ? appEntry.executables : [];
+  const preferredTags = getPreferredDiscordOsTags();
 
-  const nonLauncherWin32 = exes.find(e =>
-    String(e?.os || '').toLowerCase() === 'win32' && !e?.is_launcher && e?.name);
-  if (nonLauncherWin32) return nonLauncherWin32;
+  const nonLauncherPreferred = exes.find(e =>
+    preferredTags.includes(String(e?.os || '').toLowerCase()) && !e?.is_launcher && e?.name);
+  if (nonLauncherPreferred) return nonLauncherPreferred;
 
-  const anyWin32 = exes.find(e =>
-    String(e?.os || '').toLowerCase() === 'win32' && e?.name);
-  return anyWin32 || null;
+  const anyPreferred = exes.find(e =>
+    preferredTags.includes(String(e?.os || '').toLowerCase()) && e?.name);
+  if (anyPreferred) return anyPreferred;
+
+  const nonLauncherAny = exes.find(e => !e?.is_launcher && e?.name);
+  if (nonLauncherAny) return nonLauncherAny;
+
+  return exes.find(e => e?.name) || null;
 }
 
 function toDatabaseGames(detectableApps) {
@@ -199,17 +226,20 @@ async function syncGameList(gameListPath) {
 
 
 async function findDummyGameTemplate() {
-  if (process.env.DUMMYGAME_EXE && fs.existsSync(process.env.DUMMYGAME_EXE)) {
-    return process.env.DUMMYGAME_EXE;
+  const envBinary = process.env.DUMMYGAME_BINARY || process.env.DUMMYGAME_EXE;
+  if (envBinary && fs.existsSync(envBinary)) {
+    return envBinary;
   }
+
+  const binaryName = getDummyBinaryName();
 
   // Packaged build: bundled via electron-builder extraResources
   if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, 'dummygame', 'DummyGame.exe');
+    const bundled = path.join(process.resourcesPath, 'dummygame', binaryName);
     if (fs.existsSync(bundled)) return bundled;
   }
 
-  // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame.exe
+  // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame[.exe]
   const repoRoot = path.resolve(app.getAppPath(), '..', '..');
   const dummyProjBin = path.join(repoRoot, 'src', 'DummyGame', 'bin');
   if (!fs.existsSync(dummyProjBin)) return null;
@@ -217,9 +247,15 @@ async function findDummyGameTemplate() {
   // Try common locations first (Release, Debug)
   const candidates = [];
   const configs = ['Release', 'Debug'];
+
+  const preferredTfms = process.platform === 'win32'
+    ? ['net8.0-windows', 'net8.0']
+    : ['net8.0', 'net8.0-windows'];
+
   for (const cfg of configs) {
-    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows', 'DummyGame.exe'));
-    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows7.0', 'DummyGame.exe'));
+    for (const tfm of preferredTfms) {
+      candidates.push(path.join(dummyProjBin, cfg, tfm, binaryName));
+    }
   }
 
   for (const c of candidates) {
@@ -242,7 +278,7 @@ async function findDummyGameTemplate() {
         // avoid huge recursion
         if (p.toLowerCase().includes('ref')) continue;
         stack.push(p);
-      } else if (e.isFile() && e.name.toLowerCase() === 'dummygame.exe') {
+      } else if (e.isFile() && e.name.toLowerCase() === binaryName.toLowerCase()) {
         return p;
       }
     }
@@ -254,7 +290,7 @@ async function findDummyGameTemplate() {
 async function ensureFakeExeForGame(game, paths) {
   const dummySourceExe = await findDummyGameTemplate();
   if (!dummySourceExe) {
-    throw new Error('Could not find DummyGame.exe. Run: npm run build:dummy (from electron/), or set DUMMYGAME_EXE env var to the built DummyGame.exe path.');
+    throw new Error('Could not find DummyGame binary. Run: npm run build:dummy (from electron/), or set DUMMYGAME_BINARY env var to the built binary path.');
   }
 
   ensureDirSync(paths.gamesRoot);
@@ -288,6 +324,10 @@ async function ensureFakeExeForGame(game, paths) {
       if (!fs.existsSync(dest)) {
         await fsp.copyFile(src, dest);
       }
+    }
+
+    if (process.platform !== 'win32') {
+      await fsp.chmod(destExePath, 0o755);
     }
   }
 

@@ -12,9 +12,16 @@
     "start": "electron .",
     "dev": "electron .",
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
-    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
+    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0",
+    "build:dummy:win": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows",
+    "build:dummy:linux": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0",
+    "prepare:dummy": "node ./scripts/prepare-dummygame.js",
+    "prepare:dummy:win": "node ./scripts/prepare-dummygame.js --platform=win32",
+    "prepare:dummy:linux": "node ./scripts/prepare-dummygame.js --platform=linux",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
-    "dist": "electron-builder --win nsis --publish never",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb rpm --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
     "dist:publish": "electron-builder --win nsis --publish always"
   },
@@ -48,6 +55,14 @@
       "target": [
         "nsis"
       ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Utility"
     },
     "publish": [
       {

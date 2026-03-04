@@ -33,7 +33,8 @@ The same executable acts as:
 You need the .NET SDK (8.0+ recommended).
 
 ```bash
-dotnet build ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj -c Release
+dotnet build ./src/Launcher/Launcher.csproj -c Release
+dotnet build ./src/DummyGame/DummyGame.csproj -c Release
 ```
 
 ### Building the Electron UI
@@ -41,7 +42,21 @@ dotnet build ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj -c Rel
 ```bash
 cd electron
 npm install
-npm run dist
+npm run build:dummy:win
+npm run prepare:dummy:win
+npm run dist:win
 ```
 
-The installer will be created in `electron/dist/`.
+The Windows installer will be created in `electron/dist/`.
+
+To build Linux packages:
+
+```bash
+cd electron
+npm install
+npm run build:dummy:linux
+npm run prepare:dummy:linux
+npm run dist:linux
+```
+
+This will produce `.AppImage`, `.deb`, and `.rpm` artifacts in `electron/dist/`.
