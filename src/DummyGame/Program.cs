@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 
 #if WINDOWS
@@ -10,16 +11,29 @@ namespace DummyGame
 {
     internal static class Program
     {
+        private static volatile bool _running = true;
+
         static void Main(string[] args)
         {
             string displayName = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
                 ? args[0]
                 : "Game";
 
+            string executableName = args.Length > 1 && !string.IsNullOrWhiteSpace(args[1])
+                ? args[1]
+                : "Game";
+
+            AppDomain.CurrentDomain.ProcessExit += (_, __) => _running = false;
+            Console.CancelKeyPress += (_, e) =>
+            {
+                _running = false;
+                e.Cancel = true;
+            };
+
 #if WINDOWS
             RunWindowsUi(displayName);
 #else
-            RunConsole(displayName);
+            RunLinux(displayName, executableName);
 #endif
         }
 
@@ -52,16 +66,73 @@ namespace DummyGame
             Application.Run(form);
         }
 #else
-        private static void RunConsole(string displayName)
+        private static void RunLinux(string displayName, string executableName)
         {
-            Console.Title = displayName;
-            Console.WriteLine($"{displayName} (fake process for Discord)");
-            Console.WriteLine("Press Ctrl+C to exit.");
+            Process? uiProc = TryStartLinuxUi(displayName, executableName);
 
-            while (true)
+            while (_running)
             {
                 Thread.Sleep(1000);
             }
+
+            try
+            {
+                if (uiProc != null && !uiProc.HasExited)
+                {
+                    uiProc.Kill(true);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static Process? TryStartLinuxUi(string displayName, string executableName)
+        {
+            string title = $"{displayName} ({executableName})";
+            string text = title;
+
+            try
+            {
+                var zenity = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "zenity",
+                    Arguments = $"--info --title=\"{EscapeQuotes(title)}\" --text=\"{EscapeQuotes(text)}\" --no-wrap",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+
+                if (zenity != null) return zenity;
+            }
+            catch
+            {
+                // ignore and fallback
+            }
+
+            try
+            {
+                var xmessage = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "xmessage",
+                    Arguments = $"-center \"{EscapeQuotes(text)}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+
+                if (xmessage != null) return xmessage;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+
+        private static string EscapeQuotes(string input)
+        {
+            return (input ?? string.Empty).Replace("\"", "\\\"");
         }
 #endif
     }

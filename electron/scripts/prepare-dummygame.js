@@ -27,6 +27,25 @@ function getPreferredTfms(platform) {
   return ['net8.0', 'net8.0-windows'];
 }
 
+function getCandidateSourceDirs(dummyBinRoot, tfms, platform) {
+  const dirs = [];
+
+  if (platform === 'linux') {
+    for (const tfm of tfms) {
+      dirs.push(path.join(dummyBinRoot, tfm, 'linux-x64', 'publish'));
+      dirs.push(path.join(dummyBinRoot, tfm, 'linux-x64'));
+      dirs.push(path.join(dummyBinRoot, tfm));
+    }
+    return dirs;
+  }
+
+  for (const tfm of tfms) {
+    dirs.push(path.join(dummyBinRoot, tfm));
+  }
+
+  return dirs;
+}
+
 function main() {
   const platform = resolvePlatformArg();
   const repoRoot = path.resolve(__dirname, '..', '..');
@@ -41,8 +60,8 @@ function main() {
   const tfms = getPreferredTfms(platform);
 
   let sourceDir = null;
-  for (const tfm of tfms) {
-    const candidate = path.join(dummyBinRoot, tfm);
+  const sourceCandidates = getCandidateSourceDirs(dummyBinRoot, tfms, platform);
+  for (const candidate of sourceCandidates) {
     if (fs.existsSync(path.join(candidate, binaryName))) {
       sourceDir = candidate;
       break;

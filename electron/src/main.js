@@ -112,8 +112,9 @@ function pickBestExecutable(appEntry) {
   const preferredMatches = exes.filter(e =>
     preferredTags.includes(String(e?.os || '').toLowerCase()) && e?.name);
 
-  const preferredSupported = preferredMatches.filter(e =>
-    isExecutableNameSupportedOnCurrentPlatform(e.name));
+  const preferredSupported = process.platform === 'linux'
+    ? preferredMatches
+    : preferredMatches.filter(e => isExecutableNameSupportedOnCurrentPlatform(e.name));
 
   const nonLauncherPreferred = preferredSupported.find(e => !e?.is_launcher);
   if (nonLauncherPreferred) return nonLauncherPreferred;
@@ -136,6 +137,10 @@ function toDatabaseGames(detectableApps) {
   for (const appEntry of detectableApps || []) {
     if (!appEntry?.name) continue;
     const bestExe = pickBestExecutable(appEntry);
+
+    if (process.platform === 'linux' && !bestExe) {
+      continue;
+    }
 
     const appId = String(appEntry.id || '');
     const rawExeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
@@ -385,6 +390,13 @@ let runningProc = null;
 
 let pendingUpdateInfo = null;
 
+function emitLauncherLog(message, level = 'info') {
+  mainWindow?.webContents.send('launcher/log', {
+    level: String(level || 'info'),
+    message: String(message || '')
+  });
+}
+
 async function readUpdateState() {
   const paths = getUserDataPaths();
   return await readJsonIfExists(paths.updateStatePath, { dismissedVersion: null, dismissedAt: null });
@@ -420,6 +432,11 @@ async function maybeCheckForUpdates() {
   // Updates only make sense in packaged builds.
   if (!app.isPackaged) return;
 
+  if (process.platform === 'linux' && process.env.DFGL_ENABLE_LINUX_UPDATER !== '1') {
+    emitLauncherLog('Linux updater is disabled by default (set DFGL_ENABLE_LINUX_UPDATER=1 to enable).', 'info');
+    return;
+  }
+
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -449,6 +466,7 @@ async function maybeCheckForUpdates() {
   });
 
   autoUpdater.on('error', (err) => {
+    emitLauncherLog(`Updater error: ${String(err?.message || err || 'Unknown error')}`, 'error');
     mainWindow?.webContents.send('update/error', { message: String(err?.message || err || 'Unknown error') });
   });
 
@@ -457,8 +475,10 @@ async function maybeCheckForUpdates() {
   });
 
   try {
+    emitLauncherLog('Checking for update...', 'info');
     await autoUpdater.checkForUpdates();
   } catch (e) {
+    emitLauncherLog(`Updater check failed: ${String(e?.message || e || 'Unknown error')}`, 'error');
     mainWindow?.webContents.send('update/error', { message: String(e?.message || e || 'Unknown error') });
   }
 }
@@ -687,14 +707,42 @@ ipcMain.handle('launcher/launchGame', async (_evt, game) => {
   const { destExePath, workingDirectory } = await ensureFakeExeForGame(normalizedGame, paths);
 
   const displayName = String(normalizedGame?.name || path.basename(destExePath));
+  const processName = String(path.basename(normalizedGame?.exe || destExePath));
 
-  runningProc = spawn(destExePath, [displayName], {
+  emitLauncherLog(`Launching: ${displayName} (${processName})`, 'info');
+  emitLauncherLog(`Path: ${destExePath}`, 'info');
+
+  runningProc = spawn(destExePath, [displayName, processName], {
     cwd: workingDirectory,
     windowsHide: false,
-    stdio: 'ignore'
+    detached: process.platform === 'linux',
+    stdio: ['ignore', 'pipe', 'pipe']
   });
 
-  runningProc.once('exit', () => {
+  if (process.platform === 'linux') {
+    runningProc.unref();
+  }
+
+  runningProc.once('error', (err) => {
+    emitLauncherLog(`Launch failed: ${String(err?.message || err || 'Unknown error')}`, 'error');
+  });
+
+  if (runningProc.stdout) {
+    runningProc.stdout.on('data', (chunk) => {
+      const text = String(chunk || '').trim();
+      if (text) emitLauncherLog(text, 'info');
+    });
+  }
+
+  if (runningProc.stderr) {
+    runningProc.stderr.on('data', (chunk) => {
+      const text = String(chunk || '').trim();
+      if (text) emitLauncherLog(text, 'error');
+    });
+  }
+
+  runningProc.once('exit', (code, signal) => {
+    emitLauncherLog(`Process exited (code=${String(code)}, signal=${String(signal || '')})`, 'info');
     runningProc = null;
     mainWindow?.webContents.send('launcher/gameExited');
   });
@@ -706,7 +754,15 @@ ipcMain.handle('launcher/stopGame', async () => {
   if (!runningProc) return { ok: true };
 
   try {
-    runningProc.kill();
+    if (process.platform === 'linux' && Number.isInteger(runningProc.pid)) {
+      try {
+        process.kill(-runningProc.pid, 'SIGTERM');
+      } catch {
+        runningProc.kill();
+      }
+    } else {
+      runningProc.kill();
+    }
   } catch {
     // ignore
   }

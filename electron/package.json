@@ -19,7 +19,7 @@
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
     "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0",
     "build:dummy:win": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows",
-    "build:dummy:linux": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true",
+    "build:dummy:linux": "dotnet publish ../src/DummyGame/DummyGame.csproj -c Release -f net8.0 -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:EnableWindowsTargeting=true",
     "prepare:dummy": "node ./scripts/prepare-dummygame.js",
     "prepare:dummy:win": "node ./scripts/prepare-dummygame.js --platform=win32",
     "prepare:dummy:linux": "node ./scripts/prepare-dummygame.js --platform=linux",

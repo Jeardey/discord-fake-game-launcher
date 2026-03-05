@@ -480,6 +480,17 @@ launcherApi.onGameExited(() => {
   updateDetailsPanel();
 });
 
+if (launcherApi.onLauncherLog) {
+  launcherApi.onLauncherLog((payload) => {
+    const message = String(payload?.message || '').trim();
+    if (!message) return;
+
+    const level = String(payload?.level || 'info').toLowerCase();
+    const type = level === 'error' ? 'log-danger' : level === 'success' ? 'log-success' : '';
+    log(message, type);
+  });
+}
+
 (async function init() {
   await ensureDatabaseSynced();
   await refreshMyGames();
