@@ -707,17 +707,26 @@ ipcMain.handle('launcher/launchGame', async (_evt, game) => {
   const { destExePath, workingDirectory } = await ensureFakeExeForGame(normalizedGame, paths);
 
   const displayName = String(normalizedGame?.name || path.basename(destExePath));
-  const processName = String(path.basename(normalizedGame?.exe || destExePath));
+  const rawProcessName = String(path.basename(normalizedGame?.exe || destExePath));
+  const processName = process.platform === 'linux'
+    ? String(path.basename(rawProcessName, path.extname(rawProcessName)))
+    : rawProcessName;
 
   emitLauncherLog(`Launching: ${displayName} (${processName})`, 'info');
   emitLauncherLog(`Path: ${destExePath}`, 'info');
 
-  runningProc = spawn(destExePath, [displayName, processName], {
+  const spawnOptions = {
     cwd: workingDirectory,
     windowsHide: false,
     detached: process.platform === 'linux',
     stdio: ['ignore', 'pipe', 'pipe']
-  });
+  };
+
+  if (process.platform === 'linux') {
+    spawnOptions.argv0 = processName;
+  }
+
+  runningProc = spawn(destExePath, [displayName, processName], spawnOptions);
 
   if (process.platform === 'linux') {
     runningProc.unref();
