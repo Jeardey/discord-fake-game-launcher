@@ -39,20 +39,11 @@ function sanitizeFolderName(name) {
 }
 
 function getPreferredDiscordOsTags() {
-  switch (process.platform) {
-    case 'win32':
-      return ['win32'];
-    case 'linux':
-      return ['linux'];
-    case 'darwin':
-      return ['osx', 'darwin', 'macos'];
-    default:
-      return ['win32'];
-  }
+  return ['win32'];
 }
 
 function getDummyBinaryName() {
-  return process.platform === 'win32' ? 'DummyGame.exe' : 'DummyGame';
+  return 'DummyGame.exe';
 }
 
 function isWindowsExecutableName(exeName) {
@@ -66,11 +57,7 @@ function fallbackExeNameFromTitle(name) {
     .slice(0, 120);
 
   const safeBase = base || 'Game';
-  if (process.platform === 'win32') {
-    return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
-  }
-
-  return safeBase;
+  return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
 }
 
 function normalizeExeRelPath(exeName) {
@@ -86,23 +73,11 @@ function normalizeGameExeForCurrentPlatform(exeName, gameName) {
   if (!rawExe) return fallback;
 
   const normalized = normalizeExeRelPath(rawExe);
-
-  if (process.platform === 'win32') {
-    return normalized;
-  }
-
-  const parsed = path.parse(normalized);
-  if (parsed.ext && parsed.ext.toLowerCase() === '.exe') {
-    const withoutExt = path.join(parsed.dir, parsed.name);
-    return withoutExt || fallback;
-  }
-
   return normalized;
 }
 
 function isExecutableNameSupportedOnCurrentPlatform(exeName) {
-  if (process.platform === 'win32') return true;
-  return !isWindowsExecutableName(exeName);
+  return isWindowsExecutableName(exeName);
 }
 
 function pickBestExecutable(appEntry) {
@@ -112,19 +87,14 @@ function pickBestExecutable(appEntry) {
   const preferredMatches = exes.filter(e =>
     preferredTags.includes(String(e?.os || '').toLowerCase()) && e?.name);
 
-  const preferredSupported = process.platform === 'linux'
-    ? preferredMatches
-    : preferredMatches.filter(e => isExecutableNameSupportedOnCurrentPlatform(e.name));
+  const preferredSupported = preferredMatches.filter(e =>
+    isExecutableNameSupportedOnCurrentPlatform(e.name));
 
   const nonLauncherPreferred = preferredSupported.find(e => !e?.is_launcher);
   if (nonLauncherPreferred) return nonLauncherPreferred;
 
   const anyPreferred = preferredSupported[0];
   if (anyPreferred) return anyPreferred;
-
-  if (process.platform !== 'win32') {
-    return null;
-  }
 
   const nonLauncherAny = exes.find(e => !e?.is_launcher && e?.name);
   if (nonLauncherAny) return nonLauncherAny;
@@ -138,9 +108,7 @@ function toDatabaseGames(detectableApps) {
     if (!appEntry?.name) continue;
     const bestExe = pickBestExecutable(appEntry);
 
-    if (process.platform === 'linux' && !bestExe) {
-      continue;
-    }
+    if (!bestExe) continue;
 
     const appId = String(appEntry.id || '');
     const rawExeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
@@ -390,13 +358,6 @@ let runningProc = null;
 
 let pendingUpdateInfo = null;
 
-function emitLauncherLog(message, level = 'info') {
-  mainWindow?.webContents.send('launcher/log', {
-    level: String(level || 'info'),
-    message: String(message || '')
-  });
-}
-
 async function readUpdateState() {
   const paths = getUserDataPaths();
   return await readJsonIfExists(paths.updateStatePath, { dismissedVersion: null, dismissedAt: null });
@@ -432,11 +393,6 @@ async function maybeCheckForUpdates() {
   // Updates only make sense in packaged builds.
   if (!app.isPackaged) return;
 
-  if (process.platform === 'linux' && process.env.DFGL_ENABLE_LINUX_UPDATER !== '1') {
-    emitLauncherLog('Linux updater is disabled by default (set DFGL_ENABLE_LINUX_UPDATER=1 to enable).', 'info');
-    return;
-  }
-
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -466,7 +422,6 @@ async function maybeCheckForUpdates() {
   });
 
   autoUpdater.on('error', (err) => {
-    emitLauncherLog(`Updater error: ${String(err?.message || err || 'Unknown error')}`, 'error');
     mainWindow?.webContents.send('update/error', { message: String(err?.message || err || 'Unknown error') });
   });
 
@@ -475,10 +430,8 @@ async function maybeCheckForUpdates() {
   });
 
   try {
-    emitLauncherLog('Checking for update...', 'info');
     await autoUpdater.checkForUpdates();
   } catch (e) {
-    emitLauncherLog(`Updater check failed: ${String(e?.message || e || 'Unknown error')}`, 'error');
     mainWindow?.webContents.send('update/error', { message: String(e?.message || e || 'Unknown error') });
   }
 }
@@ -707,51 +660,14 @@ ipcMain.handle('launcher/launchGame', async (_evt, game) => {
   const { destExePath, workingDirectory } = await ensureFakeExeForGame(normalizedGame, paths);
 
   const displayName = String(normalizedGame?.name || path.basename(destExePath));
-  const rawProcessName = String(path.basename(normalizedGame?.exe || destExePath));
-  const processName = process.platform === 'linux'
-    ? String(path.basename(rawProcessName, path.extname(rawProcessName)))
-    : rawProcessName;
 
-  emitLauncherLog(`Launching: ${displayName} (${processName})`, 'info');
-  emitLauncherLog(`Path: ${destExePath}`, 'info');
-
-  const spawnOptions = {
+  runningProc = spawn(destExePath, [displayName], {
     cwd: workingDirectory,
     windowsHide: false,
-    detached: process.platform === 'linux',
-    stdio: ['ignore', 'pipe', 'pipe']
-  };
-
-  if (process.platform === 'linux') {
-    spawnOptions.argv0 = processName;
-  }
-
-  runningProc = spawn(destExePath, [displayName, processName], spawnOptions);
-
-  if (process.platform === 'linux') {
-    runningProc.unref();
-  }
-
-  runningProc.once('error', (err) => {
-    emitLauncherLog(`Launch failed: ${String(err?.message || err || 'Unknown error')}`, 'error');
+    stdio: 'ignore'
   });
 
-  if (runningProc.stdout) {
-    runningProc.stdout.on('data', (chunk) => {
-      const text = String(chunk || '').trim();
-      if (text) emitLauncherLog(text, 'info');
-    });
-  }
-
-  if (runningProc.stderr) {
-    runningProc.stderr.on('data', (chunk) => {
-      const text = String(chunk || '').trim();
-      if (text) emitLauncherLog(text, 'error');
-    });
-  }
-
-  runningProc.once('exit', (code, signal) => {
-    emitLauncherLog(`Process exited (code=${String(code)}, signal=${String(signal || '')})`, 'info');
+  runningProc.once('exit', () => {
     runningProc = null;
     mainWindow?.webContents.send('launcher/gameExited');
   });
@@ -763,15 +679,7 @@ ipcMain.handle('launcher/stopGame', async () => {
   if (!runningProc) return { ok: true };
 
   try {
-    if (process.platform === 'linux' && Number.isInteger(runningProc.pid)) {
-      try {
-        process.kill(-runningProc.pid, 'SIGTERM');
-      } catch {
-        runningProc.kill();
-      }
-    } else {
-      runningProc.kill();
-    }
+    runningProc.kill();
   } catch {
     // ignore
   }

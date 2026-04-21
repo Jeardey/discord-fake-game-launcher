@@ -48,15 +48,3 @@ npm run dist:win
 ```
 
 The Windows installer will be created in `electron/dist/`.
-
-To build Linux packages:
-
-```bash
-cd electron
-npm install
-npm run build:dummy:linux
-npm run prepare:dummy:linux
-npm run dist:linux
-```
-
-This will produce `.AppImage`, `.deb`, and `.rpm` artifacts in `electron/dist/`.

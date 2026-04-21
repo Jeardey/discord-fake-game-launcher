@@ -17,20 +17,16 @@
     "start": "electron .",
     "dev": "electron .",
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
-    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0",
+    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows",
     "build:dummy:win": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows",
-    "build:dummy:linux": "dotnet publish ../src/DummyGame/DummyGame.csproj -c Release -f net8.0 -r linux-x64 --self-contained true -p:PublishSingleFile=false -p:EnableWindowsTargeting=true",
     "prepare:dummy": "node ./scripts/prepare-dummygame.js",
     "prepare:dummy:win": "node ./scripts/prepare-dummygame.js --platform=win32",
-    "prepare:dummy:linux": "node ./scripts/prepare-dummygame.js --platform=linux",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
-    "dist:linux": "electron-builder --linux AppImage deb rpm --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
     "dist:publish": "npm run dist:publish:win",
-    "dist:publish:win": "electron-builder --win nsis --publish always",
-    "dist:publish:linux": "electron-builder --linux AppImage deb rpm --publish always"
+    "dist:publish:win": "electron-builder --win nsis --publish always"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -63,16 +59,6 @@
       "target": [
         "nsis"
       ]
-    },
-    "linux": {
-      "artifactName": "${productName}-${arch}.${ext}",
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ],
-      "category": "Utility",
-      "maintainer": "Jeardey <noreply@users.noreply.github.com>"
     },
     "publish": [
       {

@@ -24,10 +24,6 @@ contextBridge.exposeInMainWorld('launcherApi', {
     ipcRenderer.removeAllListeners('launcher/gameExited');
     ipcRenderer.on('launcher/gameExited', handler);
   },
-  onLauncherLog: (handler) => {
-    ipcRenderer.removeAllListeners('launcher/log');
-    ipcRenderer.on('launcher/log', (_evt, payload) => handler(payload));
-  },
 
   // Updates
   installUpdate: () => ipcRenderer.invoke('update/install'),

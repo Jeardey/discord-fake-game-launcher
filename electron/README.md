@@ -28,16 +28,6 @@ npm run dist:win
 
 This produces an NSIS installer in `electron/dist/` that installs to Program Files and creates shortcuts.
 
-## Build Linux packages (.AppImage, .deb, .rpm)
-
-```bash
-npm run build:dummy:linux
-npm run prepare:dummy:linux
-npm run dist:linux
-```
-
-This produces Linux artifacts in `electron/dist/`.
-
 ## Optional: portable build
 
 ```powershell

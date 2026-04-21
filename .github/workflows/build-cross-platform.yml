@@ -25,17 +25,6 @@ jobs:
               electron/dist/*.exe
               electron/dist/*.yml
               electron/dist/*.blockmap
-          - name: Linux
-            os: ubuntu-latest
-            dummyScript: build:dummy:linux
-            prepareScript: prepare:dummy:linux
-            distScript: dist:linux
-            artifactName: linux-dist
-            artifactPattern: |
-              electron/dist/*.AppImage
-              electron/dist/*.deb
-              electron/dist/*.rpm
-              electron/dist/latest-linux.yml
 
     steps:
       - name: Checkout
@@ -52,12 +41,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-
-      - name: Install Linux packaging dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends rpm
 
       - name: Install npm dependencies
         working-directory: electron
