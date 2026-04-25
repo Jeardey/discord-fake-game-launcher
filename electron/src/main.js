@@ -73,15 +73,12 @@ function normalizeGameExeForCurrentPlatform(exeName, gameName) {
   if (!rawExe) return fallback;
 
   const normalized = normalizeExeRelPath(rawExe);
-  const parsed = path.parse(normalized);
-  if (!parsed.ext) {
-    return `${normalized}.exe`;
-  }
   return normalized;
 }
 
 function isExecutableNameSupportedOnCurrentPlatform(exeName) {
-  return isWindowsExecutableName(exeName);
+  if (process.platform === 'win32') return true;
+  return !isWindowsExecutableName(exeName);
 }
 
 function pickBestExecutable(appEntry) {
@@ -100,10 +97,11 @@ function pickBestExecutable(appEntry) {
   const anyPreferred = preferredSupported[0];
   if (anyPreferred) return anyPreferred;
 
-  const nonLauncherAny = exes.find(e => !e?.is_launcher && e?.name);
+  const nonLauncherAny = exes.find(e =>
+    !e?.is_launcher && e?.name && isWindowsExecutableName(e.name));
   if (nonLauncherAny) return nonLauncherAny;
 
-  return exes.find(e => e?.name) || null;
+  return exes.find(e => e?.name && isWindowsExecutableName(e.name)) || null;
 }
 
 function toDatabaseGames(detectableApps) {
