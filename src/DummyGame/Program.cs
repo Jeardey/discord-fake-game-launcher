@@ -10,6 +10,7 @@ namespace DummyGame
 {
     internal static class Program
     {
+        [STAThread]
         static void Main(string[] args)
         {
             string displayName = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
@@ -24,7 +25,6 @@ namespace DummyGame
         }
 
 #if WINDOWS
-        [STAThread]
         private static void RunWindowsUi(string displayName)
         {
 

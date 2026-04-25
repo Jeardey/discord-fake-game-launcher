@@ -73,6 +73,10 @@ function normalizeGameExeForCurrentPlatform(exeName, gameName) {
   if (!rawExe) return fallback;
 
   const normalized = normalizeExeRelPath(rawExe);
+  const parsed = path.parse(normalized);
+  if (!parsed.ext) {
+    return `${normalized}.exe`;
+  }
   return normalized;
 }
 
@@ -322,10 +326,8 @@ async function ensureFakeExeForGame(game, paths) {
   const sourceDir = path.dirname(dummySourceExe);
   const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
 
-  if (!fs.existsSync(destExePath)) {
-    // Copy main exe but rename to target exe file name
-    await fsp.copyFile(dummySourceExe, destExePath);
-  }
+  // Always refresh the main binary to avoid stale/broken copies from older builds.
+  await fsp.copyFile(dummySourceExe, destExePath);
 
   const sidecars = await fsp.readdir(sourceDir);
   for (const fileName of sidecars) {
@@ -337,9 +339,7 @@ async function ensureFakeExeForGame(game, paths) {
     const renamedFileName = `${targetExeBase}${suffix}`;
     const dest = path.join(gameFolder, renamedFileName);
 
-    if (!fs.existsSync(dest)) {
-      await fsp.copyFile(src, dest);
-    }
+    await fsp.copyFile(src, dest);
   }
 
   if (process.platform !== 'win32') {
