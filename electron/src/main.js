@@ -73,6 +73,10 @@ function normalizeGameExeForCurrentPlatform(exeName, gameName) {
   if (!rawExe) return fallback;
 
   const normalized = normalizeExeRelPath(rawExe);
+  if (process.platform === 'win32') {
+    const parsed = path.parse(normalized);
+    if (!parsed.ext) return `${normalized}.exe`;
+  }
   return normalized;
 }
 
