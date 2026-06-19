@@ -66,11 +66,20 @@ function pickBestExecutable(appEntry) {
   return anyWin32 || null;
 }
 
+function pickSteamAppId(appEntry) {
+  if (Array.isArray(appEntry.third_party_skus)) {
+    const steamSku = appEntry.third_party_skus.find(s => s.distributor === 'steam');
+    if (steamSku && steamSku.id) return String(steamSku.id);
+  }
+  return null;
+}
+
 function toDatabaseGames(detectableApps) {
   const result = [];
   for (const appEntry of detectableApps || []) {
     if (!appEntry?.name) continue;
     const bestExe = pickBestExecutable(appEntry);
+    const steamAppId = pickSteamAppId(appEntry);
 
     const appId = String(appEntry.id || '');
     const exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
@@ -80,6 +89,7 @@ function toDatabaseGames(detectableApps) {
       name: String(appEntry.name),
       exe: exeName,
       isLauncher: Boolean(bestExe?.is_launcher),
+      steamAppId: steamAppId,
       _nameLower: String(appEntry.name).toLowerCase()
     });
   }
@@ -125,7 +135,8 @@ function pageDatabaseGames({ filter, offset, limit }) {
         id: g.id,
         name: g.name,
         exe: g.exe,
-        isLauncher: g.isLauncher
+        isLauncher: g.isLauncher,
+        steamAppId: g.steamAppId
       });
     }
 
@@ -265,8 +276,29 @@ async function ensureFakeExeForGame(game, paths) {
   const exeFolderPart = path.dirname(exeRelPath) === '.' ? '' : path.dirname(exeRelPath);
   const exeFileName = path.basename(exeRelPath);
 
-  const gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
-  ensureDirSync(gameFolder);
+  let gameFolder;
+  if (game.steamAppId) {
+    const steamappsFolder = path.join(paths.gamesRoot, 'steamapps');
+    const commonFolder = path.join(steamappsFolder, 'common');
+    const installDirName = sanitizeFolderName(game.name) || appIdFolder;
+    gameFolder = path.join(commonFolder, installDirName, exeFolderPart);
+    ensureDirSync(gameFolder);
+
+    const acfPath = path.join(steamappsFolder, `appmanifest_${game.steamAppId}.acf`);
+    if (!fs.existsSync(acfPath)) {
+      const acfContent = `"AppState"
+{
+  "appid"\t\t"${game.steamAppId}"
+  "name"\t\t"${game.name.replace(/"/g, '\\"')}"
+  "installdir"\t\t"${installDirName}"
+}
+`;
+      await fsp.writeFile(acfPath, acfContent, 'utf8');
+    }
+  } else {
+    gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
+    ensureDirSync(gameFolder);
+  }
 
   const destExePath = path.join(gameFolder, exeFileName);
 
@@ -471,6 +503,7 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
     appId: String(game?.id || ''),
     name: String(game?.name || 'Game'),
     exe: String(game?.exe || ''),
+    steamAppId: game?.steamAppId ? String(game.steamAppId) : null,
     isFavorite: false
   };
 
