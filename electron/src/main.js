@@ -316,29 +316,53 @@ async function ensureFakeExeForGame(game, paths) {
       }
     }
 
-    if (shouldWriteAcf) {
+if (shouldWriteAcf) {
+      const safeName = game.name.replace(/"/g, '\\"');
       const acfContent = `"AppState"
 {
 \t"appid"\t\t"${game.steamAppId}"
 \t"universe"\t\t"1"
-\t"name"\t\t"${game.name.replace(/"/g, '\\"')}"
-\t"StateFlags"\t\t"4"
+\t"LauncherPath"\t\t"C:\\\\Program Files (x86)\\\\Steam\\\\steam.exe"
+\t"name"\t\t"${safeName}"
+\t"StateFlags"\t\t"6"
 \t"installdir"\t\t"${installDirName}"
 \t"LastUpdated"\t\t"1765561425"
-\t"LastPlayed"\t\t"0"
-\t"SizeOnDisk"\t\t"59134564"
+\t"LastPlayed"\t\t"1765481714"
+\t"SizeOnDisk"\t\t"59134564089"
 \t"StagingSize"\t\t"0"
 \t"buildid"\t\t"21157139"
-\t"LastOwner"\t\t"0"
+\t"LastOwner"\t\t"21157139"
+\t"DownloadType"\t\t"4"
 \t"UpdateResult"\t\t"0"
-\t"BytesToDownload"\t\t"0"
+\t"BytesToDownload"\t\t"199982468"
 \t"BytesDownloaded"\t\t"0"
 \t"BytesToStage"\t\t"0"
 \t"BytesStaged"\t\t"0"
 \t"TargetBuildID"\t\t"21676404"
 \t"AutoUpdateBehavior"\t\t"0"
 \t"AllowOtherDownloadsWhileRunning"\t\t"0"
-\t"ScheduledAutoUpdate"\t\t"0"
+\t"ScheduledAutoUpdate"\t\t"1769724695"
+\t"InstalledDepots"
+\t{
+\t\t"238961"
+\t\t{
+\t\t\t"manifest"\t\t"179342197692768044"
+\t\t\t"size"\t\t"58883804081"
+\t\t}
+\t\t"238962"
+\t\t{
+\t\t\t"manifest"\t\t"5817941124950561902"
+\t\t\t"size"\t\t"250760008"
+\t\t}
+\t}
+\t"UserConfig"
+\t{
+\t\t"language"\t\t"english"
+\t}
+\t"MountedConfig"
+\t{
+\t\t"language"\t\t"english"
+\t}
 }
 `;
       await fsp.writeFile(acfPath, acfContent, 'utf8');
