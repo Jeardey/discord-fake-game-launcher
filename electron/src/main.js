@@ -310,9 +310,26 @@ async function ensureFakeExeForGame(game, paths) {
     if (!fs.existsSync(acfPath)) {
       const acfContent = `"AppState"
 {
-  "appid"\t\t"${game.steamAppId}"
-  "name"\t\t"${game.name.replace(/"/g, '\\"')}"
-  "installdir"\t\t"${installDirName}"
+\t"appid"\t\t"${game.steamAppId}"
+\t"universe"\t\t"1"
+\t"name"\t\t"${game.name.replace(/"/g, '\\"')}"
+\t"StateFlags"\t\t"4"
+\t"installdir"\t\t"${installDirName}"
+\t"LastUpdated"\t\t"1765561425"
+\t"LastPlayed"\t\t"0"
+\t"SizeOnDisk"\t\t"59134564"
+\t"StagingSize"\t\t"0"
+\t"buildid"\t\t"21157139"
+\t"LastOwner"\t\t"0"
+\t"UpdateResult"\t\t"0"
+\t"BytesToDownload"\t\t"0"
+\t"BytesDownloaded"\t\t"0"
+\t"BytesToStage"\t\t"0"
+\t"BytesStaged"\t\t"0"
+\t"TargetBuildID"\t\t"21676404"
+\t"AutoUpdateBehavior"\t\t"0"
+\t"AllowOtherDownloadsWhileRunning"\t\t"0"
+\t"ScheduledAutoUpdate"\t\t"0"
 }
 `;
       await fsp.writeFile(acfPath, acfContent, 'utf8');
