@@ -307,7 +307,16 @@ async function ensureFakeExeForGame(game, paths) {
     ensureDirSync(gameFolder);
 
     const acfPath = path.join(steamappsFolder, `appmanifest_${game.steamAppId}.acf`);
-    if (!fs.existsSync(acfPath)) {
+    let shouldWriteAcf = true;
+    if (fs.existsSync(acfPath)) {
+      const stats = await fsp.stat(acfPath);
+      // Only overwrite if it looks like our own generated dummy file (typically < 400 bytes)
+      if (stats.size > 500) {
+        shouldWriteAcf = false;
+      }
+    }
+
+    if (shouldWriteAcf) {
       const acfContent = `"AppState"
 {
 \t"appid"\t\t"${game.steamAppId}"
