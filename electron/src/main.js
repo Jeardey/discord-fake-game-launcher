@@ -262,6 +262,28 @@ async function findDummyGameTemplate() {
   return null;
 }
 
+function getSteamAppsPath() {
+  if (process.platform === 'win32') {
+    try {
+      const { spawnSync } = require('child_process');
+      const out = spawnSync('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { encoding: 'utf8' });
+      if (out.stdout) {
+        const match = out.stdout.match(/SteamPath\s+REG_SZ\s+(.*)/i);
+        if (match && match[1]) {
+          const steamPath = match[1].trim().replace(/\//g, '\\');
+          const steamApps = path.join(steamPath, 'steamapps');
+          if (fs.existsSync(steamApps)) return steamApps;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    const fallback = path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Steam', 'steamapps');
+    if (fs.existsSync(fallback)) return fallback;
+  }
+  return null;
+}
+
 async function ensureFakeExeForGame(game, paths) {
   const dummySourceExe = await findDummyGameTemplate();
   if (!dummySourceExe) {
@@ -278,7 +300,7 @@ async function ensureFakeExeForGame(game, paths) {
 
   let gameFolder;
   if (game.steamAppId) {
-    const steamappsFolder = path.join(paths.gamesRoot, 'steamapps');
+    const steamappsFolder = getSteamAppsPath() || path.join(paths.gamesRoot, 'steamapps');
     const commonFolder = path.join(steamappsFolder, 'common');
     const installDirName = sanitizeFolderName(game.name) || appIdFolder;
     gameFolder = path.join(commonFolder, installDirName, exeFolderPart);
