@@ -296,6 +296,37 @@ function resetAndRenderModal(filter) {
   renderNextModalPage();
 }
 
+// ───────────────────────────────────────────────────────────
+// IN-APP CUSTOM WARNING MODAL LOGIC
+// ───────────────────────────────────────────────────────────
+function promptDetectionWarning() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('warningModal');
+    const closeBtn = document.getElementById('warningCloseBtn');
+    const cancelBtn = document.getElementById('warningCancelBtn');
+    const confirmBtn = document.getElementById('warningConfirmBtn');
+
+    if (!modal) {
+      console.warn('Warning modal HTML not found! Proceeding safely.');
+      return resolve(true);
+    }
+
+    modal.style.display = 'flex';
+
+    const handleChoice = (proceed) => {
+      modal.style.display = 'none';
+      closeBtn.onclick = null;
+      cancelBtn.onclick = null;
+      confirmBtn.onclick = null;
+      resolve(proceed);
+    };
+
+    closeBtn.onclick = () => handleChoice(false);
+    cancelBtn.onclick = () => handleChoice(false);
+    confirmBtn.onclick = () => handleChoice(true);
+  });
+}
+
 async function renderNextModalPage() {
   if (modalState.loading) return;
   modalState.loading = true;
@@ -327,7 +358,20 @@ async function renderNextModalPage() {
       <div style="color:var(--brand); font-weight:bold; font-size:12px;">+ ADD</div>
     `;
 
+    // ───────────────────────────────────────────────────────────
+    // INJECTED DETECTION SYSTEM CHECK
+    // ───────────────────────────────────────────────────────────
     div.onclick = async () => {
+      // 1. Intercept the click if it uses the new detection mechanism
+      if (game.usesNewDetection) {
+        const userWantsToProceed = await promptDetectionWarning();
+        if (!userWantsToProceed) {
+          log(`Cancelled adding ${game.name}.`, 'log-entry');
+          return; // Abort
+        }
+      }
+
+      // 2. Normal execution path
       const installed = await launcherApi.addGame(game);
       log(`Installed ${installed.name} successfully.`, 'log-success');
       closeModal();

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -80,7 +80,7 @@ function toDatabaseGames(detectableApps) {
       name: String(appEntry.name),
       exe: exeName,
       isLauncher: Boolean(bestExe?.is_launcher),
-      usesNewDetection: !bestExe || !bestExe.name, // Flag for new detection system
+      usesNewDetection: !bestExe || !bestExe.name, // <-- FLAG FOR FRONTEND
       _nameLower: String(appEntry.name).toLowerCase()
     });
   }
@@ -127,7 +127,7 @@ function pageDatabaseGames({ filter, offset, limit }) {
         name: g.name,
         exe: g.exe,
         isLauncher: g.isLauncher,
-        usesNewDetection: g.usesNewDetection
+        usesNewDetection: g.usesNewDetection // <-- SEND TO FRONTEND
       });
     }
 
@@ -584,25 +584,6 @@ ipcMain.handle('launcher/selectGame', async (_evt, game) => {
 ipcMain.handle('launcher/launchGame', async (_evt, game) => {
   if (runningProc) {
     return { ok: false, error: 'A game is already running.' };
-  }
-
-  // Check database cache for the new detection system flag
-  const dbGame = databaseCache.games.find(g => String(g.id) === String(game.appId || game.id));
-  
-  if (dbGame && dbGame.usesNewDetection) {
-    const response = await dialog.showMessageBox(mainWindow, {
-      type: 'warning',
-      buttons: ['Launch Anyway', 'Cancel'],
-      defaultId: 0,
-      cancelId: 1, // Safe exit route
-      title: 'New Detection System Warning',
-      message: "This program uses Discord's new detection mechanism.",
-      detail: "Discord did not provide an explicit executable name for this game in the database. The fake launcher will use a fallback name, but it may not work properly for completing quests.\n\nDo you want to launch it anyway?"
-    });
-
-    if (response.response === 1) { 
-      return { ok: false, error: 'Launch cancelled by user.' };
-    }
   }
 
   const paths = getUserDataPaths();
