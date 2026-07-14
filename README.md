@@ -30,18 +30,27 @@ The same executable acts as:
 
 ## Build
 
-You need the .NET SDK (8.0+ recommended).
+You need the .NET SDK (8.0+ recommended) and Node.js (for the Electron UI).
+
+### Building the Core
 
 ```bash
-dotnet build ./src/DiscordFakeGameLauncher/DiscordFakeGameLauncher.csproj -c Release
+dotnet build ./src/Launcher/Launcher.csproj -c Release
+dotnet build ./src/DummyGame/DummyGame.csproj -c Release
 ```
 
 ### Building the Electron UI
 
-```bash
-cd electron
-npm install
-npm run dist
-```
+1. **Publish the DummyGame template** to the Electron resources folder:
+   ```bash
+   dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame
+   ```
+
+2. **Build the Electron UI**:
+   ```bash
+   cd electron
+   npm install
+   npm run dist
+   ```
 
 The installer will be created in `electron/dist/`.
