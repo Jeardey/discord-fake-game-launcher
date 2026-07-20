@@ -113,7 +113,13 @@
       </div>
       <div class="modal-body">
         <div style="color: var(--text-muted); font-weight: 600; margin-bottom: 10px;" id="updateSubtitle"></div>
-        <div class="modal-list" style="padding: 12px; overflow: auto; font-family: Consolas, monospace; font-size: 12px; color: var(--text-normal);" id="updateNotes"></div>
+        <div class="modal-list update-notes" id="updateNotes"></div>
+        <div class="update-progress-wrap" id="updateProgressWrap" style="display:none;">
+          <div class="update-progress-bar">
+            <div class="update-progress-fill" id="updateProgressFill"></div>
+          </div>
+          <div class="update-progress-text" id="updateProgressText">Downloading update…</div>
+        </div>
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
           <button class="btn-add-game" id="updateRemindBtn" style="width:auto; padding:10px 14px;">Remind me later</button>
           <button class="btn-main" id="updateInstallBtn" style="height:auto; padding:10px 18px;">Install update</button>

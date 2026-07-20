@@ -37,6 +37,9 @@ const updateSubtitle = document.getElementById('updateSubtitle');
 const updateNotes = document.getElementById('updateNotes');
 const updateInstallBtn = document.getElementById('updateInstallBtn');
 const updateRemindBtn = document.getElementById('updateRemindBtn');
+const updateProgressWrap = document.getElementById('updateProgressWrap');
+const updateProgressFill = document.getElementById('updateProgressFill');
+const updateProgressText = document.getElementById('updateProgressText');
 
 // Details panel
 const detailAppId = document.getElementById('detailAppId');
@@ -261,10 +264,13 @@ function showUpdateModal(payload) {
     ? `${version} — ${payload.releaseName}`
     : version;
 
-  const notesText = (payload.releaseNotes && String(payload.releaseNotes).trim())
-    ? String(payload.releaseNotes)
-    : 'No release notes provided.';
-  updateNotes.textContent = notesText;
+  updateNotes.innerHTML = renderReleaseNotesHtml(payload.releaseNotes);
+
+  if (updateProgressWrap) {
+    updateProgressWrap.style.display = 'none';
+    updateProgressFill.style.width = '0%';
+    updateProgressText.textContent = 'Downloading update…';
+  }
 
   updateModal.style.display = 'flex';
 }
@@ -274,6 +280,105 @@ function hideUpdateModal() {
   updateUiState.installing = false;
   updateModal.style.display = 'none';
 }
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
+}
+
+function setUpdateProgress(percent, payload) {
+  if (!updateProgressWrap) return;
+  updateProgressWrap.style.display = 'block';
+
+  const pct = Math.max(0, Math.min(100, Math.round(percent)));
+  updateProgressFill.style.width = `${pct}%`;
+
+  if (payload && Number.isFinite(payload.total) && payload.total > 0) {
+    const speed = payload.bytesPerSecond ? ` — ${formatBytes(payload.bytesPerSecond)}/s` : '';
+    updateProgressText.textContent =
+      `Downloading update… ${pct}% (${formatBytes(payload.transferred)} / ${formatBytes(payload.total)})${speed}`;
+  } else {
+    updateProgressText.textContent = `Downloading update… ${pct}%`;
+  }
+}
+
+// --- RELEASE NOTES SANITIZER/RENDERER ---
+// GitHub release notes arrive as HTML (markdown already converted upstream).
+// We only allow a small whitelist of formatting tags and strip everything
+// else (including <img> tags entirely, per design) to avoid XSS and to keep
+// the rendered notes looking like the GitHub release page.
+const RELEASE_NOTES_ALLOWED_TAGS = new Set([
+  'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S',
+  'UL', 'OL', 'LI', 'A', 'CODE', 'PRE', 'BLOCKQUOTE',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'SPAN'
+]);
+const RELEASE_NOTES_DROP_TAGS = new Set([
+  'IMG', 'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED',
+  'VIDEO', 'AUDIO', 'SVG', 'LINK', 'META', 'FORM', 'INPUT', 'BUTTON'
+]);
+const RELEASE_NOTES_SAFE_URL_RE = /^(https?:|mailto:)/i;
+
+function sanitizeReleaseNotesNode(node) {
+  const children = Array.from(node.childNodes);
+  for (const child of children) {
+    if (child.nodeType === Node.COMMENT_NODE) {
+      child.remove();
+      continue;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) continue;
+
+    const tag = child.tagName;
+
+    if (RELEASE_NOTES_DROP_TAGS.has(tag)) {
+      child.remove();
+      continue;
+    }
+
+    for (const attr of Array.from(child.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (tag === 'A' && name === 'href') {
+        if (!RELEASE_NOTES_SAFE_URL_RE.test(attr.value.trim())) child.removeAttribute(attr.name);
+        continue;
+      }
+      child.removeAttribute(attr.name);
+    }
+
+    if (tag === 'A') {
+      child.setAttribute('target', '_blank');
+      child.setAttribute('rel', 'noopener noreferrer');
+    }
+
+    if (!RELEASE_NOTES_ALLOWED_TAGS.has(tag)) {
+      sanitizeReleaseNotesNode(child);
+      while (child.firstChild) node.insertBefore(child.firstChild, child);
+      child.remove();
+      continue;
+    }
+
+    sanitizeReleaseNotesNode(child);
+  }
+}
+
+function renderReleaseNotesHtml(rawNotes) {
+  const text = String(rawNotes || '').trim();
+  if (!text) return '<p style="color:var(--text-muted);">No release notes provided.</p>';
+
+  // Plain text (no HTML tags) - escape and preserve line breaks.
+  if (!/<[a-z!/][\s\S]*>/i.test(text)) {
+    const escapeDiv = document.createElement('div');
+    escapeDiv.textContent = text;
+    return `<p>${escapeDiv.innerHTML.replace(/\n/g, '<br>')}</p>`;
+  }
+
+  const doc = new DOMParser().parseFromString(`<div id="release-notes-root">${text}</div>`, 'text/html');
+  const root = doc.getElementById('release-notes-root');
+  if (!root) return '';
+
+  sanitizeReleaseNotesNode(root);
+  return root.innerHTML;
+}
+// ------------------------------------------
 
 function debounce(fn, waitMs) {
   let t = null;
@@ -491,6 +596,7 @@ if (updateInstallBtn) {
     updateInstallBtn.disabled = true;
     updateRemindBtn.disabled = true;
     updateInstallBtn.textContent = 'Downloading…';
+    setUpdateProgress(0, null);
 
     const r = await launcherApi.installUpdate();
     if (!r?.ok) {
@@ -499,6 +605,7 @@ if (updateInstallBtn) {
       updateInstallBtn.disabled = false;
       updateRemindBtn.disabled = false;
       updateInstallBtn.textContent = 'Install update';
+      if (updateProgressWrap) updateProgressWrap.style.display = 'none';
     }
   });
 }
@@ -529,9 +636,18 @@ launcherApi.onGameExited(() => {
       log('Update available.', 'log-success');
     });
   }
+  if (launcherApi.onUpdateProgress) {
+    launcherApi.onUpdateProgress((payload) => {
+      setUpdateProgress(payload?.percent || 0, payload);
+    });
+  }
   if (launcherApi.onUpdateDownloaded) {
     launcherApi.onUpdateDownloaded(async () => {
-      // Install immediately once downloaded
+      setUpdateProgress(100, null);
+      if (updateProgressText) updateProgressText.textContent = 'Download complete. Installing…';
+      if (updateInstallBtn) updateInstallBtn.textContent = 'Installing…';
+      log('Update downloaded. Installing…', 'log-success');
+      // Opens the downloaded installer and quits this app so it can run.
       await launcherApi.quitAndInstallUpdate();
     });
   }
