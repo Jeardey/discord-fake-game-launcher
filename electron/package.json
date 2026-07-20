@@ -1,0 +1,68 @@
+{
+  "name": "discord-fake-game-launcher-ui",
+  "private": true,
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jeardey/discord-fake-game-launcher.git"
+  },
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "sync:gamelist": "node ./scripts/sync-gamelist.js",
+    "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
+    "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "dist:publish": "electron-builder --win nsis --publish always"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
+  "build": {
+    "appId": "com.jeardey.discordfakegamelauncher",
+    "productName": "Discord Fake Game Launcher",
+    "files": [
+      "src/**"
+    ],
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "build-resources/dummygame",
+        "to": "dummygame",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Jeardey",
+        "repo": "discord-fake-game-launcher"
+      }
+    ],
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Discord Fake Game Launcher"
+    }
+  }
+}

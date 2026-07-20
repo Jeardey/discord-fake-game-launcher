@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace DiscordFakeGameLauncher
 {
@@ -85,6 +86,11 @@ namespace DiscordFakeGameLauncher
 
             PrintHeader(baseDir);
 
+            // Deprecation notice + forward to Electron GUI (if present)
+            // If we successfully launch the GUI, this process exits.
+            if (TryLaunchElectronGuiAndExit(baseDir))
+                return;
+
             // 1) Auto-update launcher if needed (this may exit and restart)
             TryCheckForLauncherUpdate(baseDir, exeFileName);
 
@@ -93,6 +99,127 @@ namespace DiscordFakeGameLauncher
 
             // 3) Run the normal launcher flow
             RunAsLauncher(baseDir);
+        }
+
+        private static bool TryLaunchElectronGuiAndExit(string baseDir)
+        {
+            try
+            {
+                string? electronExe = FindElectronGuiExe(baseDir);
+                if (string.IsNullOrWhiteSpace(electronExe) || !File.Exists(electronExe))
+                {
+                    Console.WriteLine("⚠ This terminal launcher is deprecated.");
+                    Console.WriteLine("   The new Electron GUI was not found next to this executable, so the terminal version will continue.\n");
+                    return false;
+                }
+
+                Console.WriteLine("⚠ This terminal launcher is deprecated.");
+                Console.WriteLine("   Launching the new Electron GUI...");
+                Console.WriteLine("   Press Enter to launch now, or wait 5 seconds.\n");
+
+                // Wait up to 5 seconds, or until Enter is pressed
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                while (DateTime.UtcNow < deadline)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(intercept: true);
+                        if (key.Key == ConsoleKey.Enter)
+                            break;
+                    }
+
+                    Thread.Sleep(50);
+                }
+
+                Process.Start(new ProcessStartInfo(electronExe)
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = Path.GetDirectoryName(electronExe) ?? baseDir
+                });
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠ Could not launch the Electron GUI: {ex.Message}");
+                Console.WriteLine("Continuing with the terminal version.\n");
+                return false;
+            }
+        }
+
+        private static string? FindElectronGuiExe(string baseDir)
+        {
+            // Common layouts:
+            // - Same folder as this exe (release packaging)
+            // - electron/dist/*.exe (repo / CI artifacts)
+
+            var candidates = new List<string>();
+
+            // 1) Same folder
+            try
+            {
+                candidates.AddRange(Directory.GetFiles(baseDir, "*.exe", SearchOption.TopDirectoryOnly));
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // 2) electron/dist next to baseDir
+            try
+            {
+                string repoLikeDist = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "electron", "dist"));
+                if (Directory.Exists(repoLikeDist))
+                    candidates.AddRange(Directory.GetFiles(repoLikeDist, "*.exe", SearchOption.TopDirectoryOnly));
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // 3) electron/dist under baseDir
+            try
+            {
+                string localDist = Path.Combine(baseDir, "electron", "dist");
+                if (Directory.Exists(localDist))
+                    candidates.AddRange(Directory.GetFiles(localDist, "*.exe", SearchOption.TopDirectoryOnly));
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // Filter out obvious non-GUI executables
+            var filtered = candidates
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(p =>
+                {
+                    string name = Path.GetFileName(p);
+                    if (string.IsNullOrWhiteSpace(name)) return false;
+                    if (name.Equals("DummyGame.exe", StringComparison.OrdinalIgnoreCase)) return false;
+                    if (name.Equals("Launcher.exe", StringComparison.OrdinalIgnoreCase)) return false;
+                    return true;
+                })
+                .ToList();
+
+            // Prefer names that look like the Electron build product
+            var preferred = filtered
+                .OrderByDescending(p =>
+                {
+                    string n = Path.GetFileName(p);
+                    int score = 0;
+                    if (n.Contains("Discord", StringComparison.OrdinalIgnoreCase)) score += 3;
+                    if (n.Contains("Fake", StringComparison.OrdinalIgnoreCase)) score += 2;
+                    if (n.Contains("Launcher", StringComparison.OrdinalIgnoreCase)) score += 2;
+                    if (n.Contains("Game", StringComparison.OrdinalIgnoreCase)) score += 1;
+                    // De-prioritize self
+                    if (n.Equals("Launcher.exe", StringComparison.OrdinalIgnoreCase)) score -= 10;
+                    return score;
+                })
+                .FirstOrDefault();
+
+            return preferred;
         }
 
         private static HttpClient CreateHttpClient()
