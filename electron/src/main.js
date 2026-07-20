@@ -25,8 +25,7 @@ function getUserDataPaths() {
     userData,
     myGamesPath: path.join(userData, 'myGames.json'),
     gameListPath: path.join(userData, 'gamelist.json'),
-    gamesRoot: path.join(userData, 'games'),
-    updateStatePath: path.join(userData, 'updateState.json')
+    gamesRoot: path.join(userData, 'games')
   };
 }
 
@@ -301,17 +300,6 @@ let runningProc = null;
 
 let pendingUpdateInfo = null;
 
-async function readUpdateState() {
-  const paths = getUserDataPaths();
-  return await readJsonIfExists(paths.updateStatePath, { dismissedVersion: null, dismissedAt: null });
-}
-
-async function writeUpdateState(state) {
-  const paths = getUserDataPaths();
-  ensureDirSync(paths.userData);
-  await writeJson(paths.updateStatePath, state);
-}
-
 function coerceReleaseNotesToText(releaseNotes) {
   if (!releaseNotes) return '';
 
@@ -339,16 +327,9 @@ async function maybeCheckForUpdates() {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('update-available', async (info) => {
-    try {
-      const state = await readUpdateState();
-      if (state?.dismissedVersion && String(state.dismissedVersion) === String(info?.version || '')) {
-        return; // user chose "remind later" for this version
-      }
-    } catch {
-      // ignore
-    }
-
+  autoUpdater.on('update-available', (info) => {
+    // No persisted dismissal: if the user picks "remind later", the update
+    // prompt will simply reappear the next time the app starts and checks.
     pendingUpdateInfo = info;
     const payload = {
       version: String(info?.version || ''),
@@ -366,6 +347,15 @@ async function maybeCheckForUpdates() {
 
   autoUpdater.on('error', (err) => {
     mainWindow?.webContents.send('update/error', { message: String(err?.message || err || 'Unknown error') });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update/progress', {
+      percent: Number(progress?.percent) || 0,
+      transferred: Number(progress?.transferred) || 0,
+      total: Number(progress?.total) || 0,
+      bytesPerSecond: Number(progress?.bytesPerSecond) || 0
+    });
   });
 
   autoUpdater.on('update-downloaded', () => {
@@ -624,8 +614,8 @@ ipcMain.handle('launcher/stopGame', async () => {
 // Updates
 // ───────────────────────────────────────────────────────────
 ipcMain.handle('update/remindLater', async () => {
-  const v = String(pendingUpdateInfo?.version || '');
-  await writeUpdateState({ dismissedVersion: v || null, dismissedAt: new Date().toISOString() });
+  // Intentionally not persisted: the update prompt will show again on the
+  // next app startup since nothing is written to disk here.
   pendingUpdateInfo = null;
   return { ok: true };
 });
@@ -634,9 +624,6 @@ ipcMain.handle('update/install', async () => {
   if (!app.isPackaged) return { ok: false, error: 'Updates are only available in packaged builds.' };
 
   try {
-    // Clear any previous dismiss state so the same version doesn't get suppressed.
-    await writeUpdateState({ dismissedVersion: null, dismissedAt: null });
-
     await autoUpdater.downloadUpdate();
 
     // When update-downloaded fires, renderer can call quitAndInstall.

@@ -456,4 +456,103 @@ body {
 ::-webkit-scrollbar-track { background-color: rgba(0,0,0,0.1); }
 ::-webkit-scrollbar-thumb { background-color: var(--bg-darkest); border-radius: 10px; }
 
+/* --- Update modal release notes --- */
+.update-notes {
+  padding: 12px 14px;
+  overflow: auto;
+  max-height: 320px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-normal);
+}
+
+.update-notes h1,
+.update-notes h2,
+.update-notes h3,
+.update-notes h4 {
+  color: var(--text-header);
+  font-weight: 700;
+  margin: 14px 0 8px;
+  line-height: 1.3;
+}
+
+.update-notes h1:first-child,
+.update-notes h2:first-child,
+.update-notes h3:first-child,
+.update-notes h4:first-child,
+.update-notes p:first-child {
+  margin-top: 0;
+}
+
+.update-notes p { margin: 8px 0; }
+
+.update-notes ul,
+.update-notes ol {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.update-notes li { margin: 4px 0; }
+
+.update-notes a {
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.update-notes a:hover { text-decoration: underline; }
+
+.update-notes code {
+  background-color: rgba(0,0,0,0.3);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.update-notes pre {
+  background-color: rgba(0,0,0,0.3);
+  padding: 10px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.update-notes pre code { background: none; padding: 0; }
+
+.update-notes blockquote {
+  border-left: 3px solid var(--brand);
+  margin: 8px 0;
+  padding-left: 12px;
+  color: var(--text-muted);
+}
+
+.update-notes hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin: 14px 0;
+}
+
+/* --- Update progress bar --- */
+.update-progress-wrap { margin-top: 14px; }
+
+.update-progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--bg-card);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--brand);
+  transition: width 0.15s ease-out;
+}
+
+.update-progress-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

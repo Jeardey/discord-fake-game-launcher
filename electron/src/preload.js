@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('launcherApi', {
     ipcRenderer.removeAllListeners('update/available');
     ipcRenderer.on('update/available', (_evt, payload) => handler(payload));
   },
+  onUpdateProgress: (handler) => {
+    ipcRenderer.removeAllListeners('update/progress');
+    ipcRenderer.on('update/progress', (_evt, payload) => handler(payload));
+  },
   onUpdateDownloaded: (handler) => {
     ipcRenderer.removeAllListeners('update/downloaded');
     ipcRenderer.on('update/downloaded', handler);
