@@ -9,6 +9,12 @@
     -->
     <TargetFrameworks>net8.0-windows;net8.0</TargetFrameworks>
     <Nullable>enable</Nullable>
+    <!--
+      Allows restoring/building the net8.0-windows TFM from non-Windows
+      hosts (e.g. Linux CI runners). Only affects build-time SDK checks -
+      the resulting WinForms binary still only runs on Windows.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
