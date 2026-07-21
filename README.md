@@ -1,3 +1,6 @@
+> [!WARNING]  
+> This branch is dedicated for test implementation of Linux support for Discord Fake Game Launcher.
+> It's at very early stage, and may have issues.
 
 # Discord Fake Game Launcher
 
