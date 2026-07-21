@@ -6,6 +6,17 @@ const fsp = require('fs/promises');
 const os = require('os');
 const { spawn } = require('child_process');
 
+// Linux AppImages are packaged without root privileges, so the bundled
+// `chrome-sandbox` helper can never be chown'd to root:root with the setuid
+// bit set. Without that, Chromium's sandbox initialization fails outright on
+// many distros (especially ones that restrict unprivileged user namespaces),
+// and the whole process exits immediately with no window and no visible
+// error. Disable the sandbox on Linux only; Windows/macOS are unaffected.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+}
+
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
 // In-memory cache to avoid re-reading/parsing large gamelist.json on every search.
