@@ -1,8 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!--
+      Multi-target: net8.0-windows keeps the existing WinForms window (unchanged
+      behavior on Windows). net8.0 is a headless build used on Linux/macOS,
+      where Discord's game detection only needs a running process with the
+      right name - no GUI is required.
+    -->
+    <TargetFrameworks>net8.0-windows;net8.0</TargetFrameworks>
     <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <UseWindowsForms>true</UseWindowsForms>
+    <DefineConstants>$(DefineConstants);DUMMYGAME_WINDOWS_GUI</DefineConstants>
   </PropertyGroup>
 </Project>

@@ -13,10 +13,14 @@
     "dev": "electron .",
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
     "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
+    "build:dummy:win": "dotnet publish ../src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows -o ./build-resources/dummygame-win",
+    "build:dummy:linux": "dotnet publish ../src/DummyGame/DummyGame.csproj -c Release -f net8.0 -o ./build-resources/dummygame-linux",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
     "dist": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:publish": "electron-builder --win nsis --publish always"
+    "dist:publish": "electron-builder --win nsis --publish always",
+    "dist:linux": "electron-builder --linux AppImage --publish never",
+    "dist:linux:publish": "electron-builder --linux AppImage --publish always"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -35,18 +39,33 @@
     "directories": {
       "output": "dist"
     },
-    "extraResources": [
-      {
-        "from": "build-resources/dummygame",
-        "to": "dummygame",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "build-resources/dummygame-win",
+          "to": "dummygame",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game",
+      "extraResources": [
+        {
+          "from": "build-resources/dummygame-linux",
+          "to": "dummygame",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "publish": [

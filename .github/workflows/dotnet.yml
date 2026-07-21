@@ -6,7 +6,22 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dummy_tfm: net8.0-windows
+            dummy_dir: dummygame-win
+            dist_script: dist
+            artifact_name: DiscordFakeGameLauncher-Setup-Windows
+          - os: ubuntu-latest
+            dummy_tfm: net8.0
+            dummy_dir: dummygame-linux
+            dist_script: dist:linux
+            artifact_name: DiscordFakeGameLauncher-AppImage-Linux
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -34,12 +49,12 @@ jobs:
 
       - name: Publish (both, framework-dependent)
         run: |
-          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./publish --no-restore
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -f ${{ matrix.dummy_tfm }} -o ./publish --no-restore
           dotnet publish ./src/Launcher/Launcher.csproj  -c Release -o ./publish --no-restore
 
       - name: Prepare Electron bundled DummyGame
         run: |
-          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -f ${{ matrix.dummy_tfm }} -o ./electron/build-resources/${{ matrix.dummy_dir }} --no-restore
 
       - name: Install Electron dependencies
         run: |
@@ -49,11 +64,11 @@ jobs:
       - name: Build Electron (installer)
         run: |
           cd electron
-          npm run dist
+          npm run ${{ matrix.dist_script }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DiscordFakeGameLauncher-Setup
+          name: ${{ matrix.artifact_name }}
           path: |
             electron/dist

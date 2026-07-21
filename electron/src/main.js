@@ -19,6 +19,23 @@ function ensureDirSync(dirPath) {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
 
+// ───────────────────────────────────────────────────────────
+// Platform support
+// ───────────────────────────────────────────────────────────
+// Discord's detectable-apps database lists executables per OS ('win32',
+// 'linux', 'darwin'). We only ever pick entries matching the OS we're
+// actually running on, so existing Windows behavior is unaffected by any
+// of the Linux-specific additions below.
+function getDetectionOsKey() {
+  if (process.platform === 'linux') return 'linux';
+  if (process.platform === 'darwin') return 'darwin';
+  return 'win32';
+}
+
+function getDummyBinaryName() {
+  return process.platform === 'win32' ? 'DummyGame.exe' : 'DummyGame';
+}
+
 function getUserDataPaths() {
   const userData = app.getPath('userData');
   return {
@@ -44,6 +61,10 @@ function fallbackExeNameFromTitle(name) {
     .slice(0, 120);
 
   const safeBase = base || 'Game';
+
+  // Only Windows executables use the .exe suffix; Linux/macOS process names
+  // typically have no extension.
+  if (getDetectionOsKey() !== 'win32') return safeBase;
   return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
 }
 
@@ -55,14 +76,15 @@ function normalizeExeRelPath(exeName) {
 
 function pickBestExecutable(appEntry) {
   const exes = Array.isArray(appEntry.executables) ? appEntry.executables : [];
+  const osKey = getDetectionOsKey();
 
-  const nonLauncherWin32 = exes.find(e =>
-    String(e?.os || '').toLowerCase() === 'win32' && !e?.is_launcher && e?.name);
-  if (nonLauncherWin32) return nonLauncherWin32;
+  const nonLauncherMatch = exes.find(e =>
+    String(e?.os || '').toLowerCase() === osKey && !e?.is_launcher && e?.name);
+  if (nonLauncherMatch) return nonLauncherMatch;
 
-  const anyWin32 = exes.find(e =>
-    String(e?.os || '').toLowerCase() === 'win32' && e?.name);
-  return anyWin32 || null;
+  const anyMatch = exes.find(e =>
+    String(e?.os || '').toLowerCase() === osKey && e?.name);
+  return anyMatch || null;
 }
 
 function toDatabaseGames(detectableApps) {
@@ -204,13 +226,15 @@ async function findDummyGameTemplate() {
     return process.env.DUMMYGAME_EXE;
   }
 
+  const dummyBinaryName = getDummyBinaryName();
+
   // Packaged build: bundled via electron-builder extraResources
   if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, 'dummygame', 'DummyGame.exe');
+    const bundled = path.join(process.resourcesPath, 'dummygame', dummyBinaryName);
     if (fs.existsSync(bundled)) return bundled;
   }
 
-  // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame.exe
+  // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame(.exe)
   const repoRoot = path.resolve(app.getAppPath(), '..', '..');
   const dummyProjBin = path.join(repoRoot, 'src', 'DummyGame', 'bin');
   if (!fs.existsSync(dummyProjBin)) return null;
@@ -218,9 +242,13 @@ async function findDummyGameTemplate() {
   // Try common locations first (Release, Debug)
   const candidates = [];
   const configs = ['Release', 'Debug'];
+  const tfms = process.platform === 'win32'
+    ? ['net8.0-windows', 'net8.0-windows7.0']
+    : ['net8.0'];
   for (const cfg of configs) {
-    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows', 'DummyGame.exe'));
-    candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows7.0', 'DummyGame.exe'));
+    for (const tfm of tfms) {
+      candidates.push(path.join(dummyProjBin, cfg, tfm, dummyBinaryName));
+    }
   }
 
   for (const c of candidates) {
@@ -243,7 +271,7 @@ async function findDummyGameTemplate() {
         // avoid huge recursion
         if (p.toLowerCase().includes('ref')) continue;
         stack.push(p);
-      } else if (e.isFile() && e.name.toLowerCase() === 'dummygame.exe') {
+      } else if (e.isFile() && e.name.toLowerCase() === dummyBinaryName.toLowerCase()) {
         return p;
       }
     }
@@ -255,7 +283,7 @@ async function findDummyGameTemplate() {
 async function ensureFakeExeForGame(game, paths) {
   const dummySourceExe = await findDummyGameTemplate();
   if (!dummySourceExe) {
-    throw new Error('Could not find DummyGame.exe. Run: npm run build:dummy (from electron/), or set DUMMYGAME_EXE env var to the built DummyGame.exe path.');
+    throw new Error(`Could not find ${getDummyBinaryName()}. Run: npm run build:dummy (from electron/), or set DUMMYGAME_EXE env var to the built binary path.`);
   }
 
   ensureDirSync(paths.gamesRoot);
@@ -274,6 +302,12 @@ async function ensureFakeExeForGame(game, paths) {
   if (!fs.existsSync(destExePath)) {
     // Copy main exe but rename to target exe file name
     await fsp.copyFile(dummySourceExe, destExePath);
+
+    // fs.copyFile doesn't reliably preserve the executable bit on Linux/macOS
+    // (umask can strip it), so make sure Discord can actually run the process.
+    if (process.platform !== 'win32') {
+      try { await fsp.chmod(destExePath, 0o755); } catch { /* ignore */ }
+    }
 
     // Copy sidecar files DummyGame.* from source dir
     const sourceDir = path.dirname(dummySourceExe);
@@ -513,9 +547,59 @@ ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
   return { ok: true, removed: before - filtered.length };
 });
 
+// Escapes a single argument for the Exec= line of a freedesktop .desktop
+// entry, per the Desktop Entry Specification quoting rules.
+function escapeDesktopExecArg(value) {
+  const escaped = String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`');
+  return `"${escaped}"`;
+}
+
+async function createLinuxDesktopShortcut({ desktopDir, baseName, displayName, destExePath, workingDirectory }) {
+  ensureDirSync(desktopDir);
+
+  let shortcutPath = path.join(desktopDir, `${baseName}.desktop`);
+
+  // Avoid overwriting existing shortcuts: Game.desktop, Game (2).desktop, ...
+  if (fs.existsSync(shortcutPath)) {
+    for (let i = 2; i < 1000; i++) {
+      const candidate = path.join(desktopDir, `${baseName} (${i}).desktop`);
+      if (!fs.existsSync(candidate)) {
+        shortcutPath = candidate;
+        break;
+      }
+    }
+  }
+
+  const execLine = `${escapeDesktopExecArg(destExePath)} ${escapeDesktopExecArg(displayName)}`;
+  const escapedName = String(displayName).replace(/\n/g, ' ');
+
+  const contents = [
+    '[Desktop Entry]',
+    'Type=Application',
+    `Name=${escapedName}`,
+    `Exec=${execLine}`,
+    `Path=${workingDirectory}`,
+    'Terminal=false',
+    'Categories=Game;',
+    ''
+  ].join('\n');
+
+  await fsp.writeFile(shortcutPath, contents, 'utf8');
+
+  // Most Linux desktop environments require the executable bit before a
+  // .desktop launcher is trusted/runnable from the desktop.
+  try { await fsp.chmod(shortcutPath, 0o755); } catch { /* ignore */ }
+
+  return { ok: true, path: shortcutPath };
+}
+
 ipcMain.handle('launcher/createShortcut', async (_evt, { appId, exe }) => {
-  if (process.platform !== 'win32') {
-    return { ok: false, error: 'Shortcuts are only supported on Windows.' };
+  if (process.platform !== 'win32' && process.platform !== 'linux') {
+    return { ok: false, error: 'Shortcuts are only supported on Windows and Linux.' };
   }
 
   const paths = getUserDataPaths();
@@ -534,8 +618,13 @@ ipcMain.handle('launcher/createShortcut', async (_evt, { appId, exe }) => {
   try {
     const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
     const desktopDir = app.getPath('desktop');
-
+    const displayName = String(game?.name || path.basename(destExePath));
     const baseName = sanitizeFolderName(game.name || path.basename(destExePath, path.extname(destExePath))) || 'Game';
+
+    if (process.platform === 'linux') {
+      return createLinuxDesktopShortcut({ desktopDir, baseName, displayName, destExePath, workingDirectory });
+    }
+
     let shortcutPath = path.join(desktopDir, `${baseName}.lnk`);
 
     // Avoid overwriting existing shortcuts: Game.lnk, Game (2).lnk, ...
@@ -549,7 +638,6 @@ ipcMain.handle('launcher/createShortcut', async (_evt, { appId, exe }) => {
       }
     }
 
-    const displayName = String(game?.name || path.basename(destExePath));
     const escaped = displayName.replace(/"/g, '\\"');
     const args = `"${escaped}"`;
 

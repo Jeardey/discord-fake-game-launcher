@@ -9,22 +9,14 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
 
       - name: Extract version from tag
         id: ver
@@ -49,10 +41,41 @@ jobs:
           draft: false
           prerelease: false
 
+  build-and-release:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dummy_tfm: net8.0-windows
+            dummy_dir: dummygame-win
+            dist_script: dist:publish
+          - os: ubuntu-latest
+            dummy_tfm: net8.0
+            dummy_dir: dummygame-linux
+            dist_script: dist:linux:publish
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
       - name: Publish DummyGame for bundling
         run: |
           dotnet restore ./src/DummyGame/DummyGame.csproj
-          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
+          dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -f ${{ matrix.dummy_tfm }} -o ./electron/build-resources/${{ matrix.dummy_dir }} --no-restore
 
       - name: Install Electron dependencies
         run: |
@@ -62,7 +85,7 @@ jobs:
       - name: Set Electron app version
         shell: pwsh
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
+          $v = "${{ needs.create-release.outputs.version }}"
           Push-Location electron
           npm version $v --no-git-tag-version
           Pop-Location
@@ -72,4 +95,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd electron
-          npm run dist:publish
+          npm run ${{ matrix.dist_script }}

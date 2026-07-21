@@ -45,15 +45,30 @@ dotnet build ./src/DummyGame/DummyGame.csproj -c Release
 ### Building the Electron UI
 
 1. **Publish the DummyGame template** to the Electron resources folder:
+
+   Windows:
    ```bash
-   dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame
+   dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -f net8.0-windows -o ./electron/build-resources/dummygame-win
+   ```
+
+   Linux:
+   ```bash
+   dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -f net8.0 -o ./electron/build-resources/dummygame-linux
    ```
 
 2. **Build the Electron UI**:
    ```bash
    cd electron
    npm install
-   npm run dist
+   npm run dist          # Windows installer (nsis)
+   npm run dist:linux    # Linux AppImage
    ```
 
-The installer will be created in `electron/dist/`.
+The installer/AppImage will be created in `electron/dist/`.
+
+> [!NOTE]
+> Linux support is early/experimental. Discord's Linux client detects games by
+> matching a *running process name* (no window is required), so the fake
+> process on Linux is headless. `.desktop` shortcuts are created instead of
+> `.lnk` shortcuts. Requires the .NET runtime to be installed on the target
+> machine (framework-dependent build), same as on Windows.
