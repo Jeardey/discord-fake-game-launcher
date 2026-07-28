@@ -330,6 +330,28 @@ namespace DiscordFakeGameLauncher
                                   .GetAwaiter().GetResult();
                 File.WriteAllBytes(updateZip, data);
 
+                // Verify SHA256 checksum before executing downloaded content
+                string checksumAssetName = asset.Name + ".sha256";
+                var checksumAsset = release.Assets
+                    .FirstOrDefault(a => a.Name != null &&
+                                         string.Equals(a.Name, checksumAssetName, StringComparison.OrdinalIgnoreCase));
+
+                if (checksumAsset == null)
+                {
+                    Console.WriteLine("❌ No SHA256 checksum file found for update. Aborting for security.");
+                    return;
+                }
+
+                string expectedHash = Http.GetStringAsync(checksumAsset.BrowserDownloadUrl)
+                                          .GetAwaiter().GetResult().Trim().Split(new char[]{' ', '\t'})[0].ToLowerInvariant();
+                string actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
+
+                if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+                {
+                    Console.WriteLine("❌ SHA256 checksum mismatch. Aborting update for security.");
+                    return;
+                }
+
                 // Extract zip
                 ZipFile.ExtractToDirectory(updateZip, extractDir);
 
