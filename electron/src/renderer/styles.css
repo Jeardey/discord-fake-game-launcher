@@ -151,6 +151,22 @@ body {
 .game-item:hover { background-color: var(--bg-hover); color: var(--text-normal); }
 .game-item.active { background-color: var(--bg-active); color: var(--text-header); }
 
+.game-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: transparent;
+  border: 1px solid var(--text-muted);
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.game-status-dot.active {
+  background-color: var(--success);
+  border-color: var(--success);
+  box-shadow: 0 0 0 2px rgba(59, 165, 92, 0.18);
+}
+
 .game-icon-img {
   width: 32px;
   height: 32px;

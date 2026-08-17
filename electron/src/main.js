@@ -5,6 +5,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const os = require('os');
 const { spawn } = require('child_process');
+const { makeGameKey } = require('./launcher-state');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
@@ -296,7 +297,7 @@ async function ensureFakeExeForGame(game, paths) {
 }
 
 let mainWindow = null;
-let runningProc = null;
+let runningProcesses = new Map();
 
 let pendingUpdateInfo = null;
 
@@ -572,42 +573,64 @@ ipcMain.handle('launcher/selectGame', async (_evt, game) => {
 });
 
 ipcMain.handle('launcher/launchGame', async (_evt, game) => {
-  if (runningProc) {
-    return { ok: false, error: 'A game is already running.' };
-  }
-
   const paths = getUserDataPaths();
   ensureDirSync(paths.userData);
+
+  const gameKey = makeGameKey(game);
+  const existing = gameKey ? runningProcesses.get(gameKey) : null;
+  if (existing && !existing.killed && existing.exitCode === null) {
+    return { ok: true, exePath: existing.spawnargs?.[0] || '', gameKey, alreadyRunning: true };
+  }
 
   const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
 
   const displayName = String(game?.name || path.basename(destExePath));
 
-  runningProc = spawn(destExePath, [displayName], {
+  const proc = spawn(destExePath, [displayName], {
     cwd: workingDirectory,
     windowsHide: false,
     stdio: 'ignore'
   });
 
-  runningProc.once('exit', () => {
-    runningProc = null;
-    mainWindow?.webContents.send('launcher/gameExited');
+  runningProcesses.set(gameKey, proc);
+
+  proc.once('exit', () => {
+    runningProcesses.delete(gameKey);
+    mainWindow?.webContents.send('launcher/gameExited', {
+      gameKey,
+      appId: String(game?.appId || ''),
+      exe: String(game?.exe || ''),
+      name: String(game?.name || '')
+    });
   });
 
-  return { ok: true, exePath: destExePath };
+  return { ok: true, exePath: destExePath, gameKey };
 });
 
-ipcMain.handle('launcher/stopGame', async () => {
-  if (!runningProc) return { ok: true };
+ipcMain.handle('launcher/stopGame', async (_evt, game) => {
+  const requestedKey = game ? makeGameKey(game) : null;
+
+  if (!requestedKey) {
+    for (const [gameKey, proc] of [...runningProcesses.entries()]) {
+      try { proc.kill(); } catch {}
+      runningProcesses.delete(gameKey);
+    }
+    return { ok: true, stoppedAll: true };
+  }
+
+  const proc = runningProcesses.get(requestedKey);
+  if (!proc) {
+    return { ok: true, stopped: false, gameKey: requestedKey };
+  }
 
   try {
-    runningProc.kill();
+    proc.kill();
   } catch {
     // ignore
   }
 
-  runningProc = null;
-  return { ok: true };
+  runningProcesses.delete(requestedKey);
+  return { ok: true, stopped: true, gameKey: requestedKey };
 });
 
 // ───────────────────────────────────────────────────────────
