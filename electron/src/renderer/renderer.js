@@ -4,7 +4,7 @@ const starSvg = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24
 
 let myGames = [];
 let selectedGame = null;
-let isRunning = false;
+let runningGames = new Set();
 
 let modalState = {
   filter: '',
@@ -74,6 +74,43 @@ function resetHeroState() {
   updateDetailsPanel();
 }
 
+function syncSelectedGameLaunchState() {
+  if (!selectedGame) {
+    resetHeroState();
+    return;
+  }
+
+  const running = isGameRunning(selectedGame);
+  if (!running) {
+    resetHeroState();
+    return;
+  }
+
+  statusDot.style.backgroundColor = 'var(--success)';
+  statusDot.style.color = 'var(--success)';
+  statusText.innerText = 'Playing Now';
+  statusText.style.color = 'var(--success)';
+
+  launchBtn.classList.add('running');
+  document.getElementById('launchBtnText').innerText = 'Stop Playing';
+  document.getElementById('playIcon').style.display = 'none';
+  document.getElementById('stopIcon').style.display = 'block';
+
+  updateDetailsPanel();
+}
+
+function makeGameKey(game) {
+  if (!game || typeof game !== 'object') return '';
+  const appId = String(game.appId ?? '');
+  const exe = String(game.exe ?? '');
+  const key = `${appId}::${exe}`;
+  return key === '::' ? '' : key;
+}
+
+function isGameRunning(game) {
+  return Boolean(game && makeGameKey(game) && runningGames.has(makeGameKey(game)));
+}
+
 function updateDetailsPanel() {
   const dash = '—';
 
@@ -90,7 +127,7 @@ function updateDetailsPanel() {
   detailAppId.textContent = selectedGame.appId || dash;
   detailExe.textContent = selectedGame.exe || dash;
   detailFavorite.textContent = selectedGame.isFavorite ? 'Yes' : 'No';
-  detailRunning.textContent = isRunning ? 'Yes' : 'No';
+  detailRunning.textContent = isGameRunning(selectedGame) ? 'Yes' : 'No';
 }
 
 // No background thumbnails in the public build.
@@ -108,9 +145,11 @@ function renderMainList(filter = '') {
     if (!game.name.toLowerCase().includes(term)) continue;
 
     const div = document.createElement('div');
+    const running = isGameRunning(game);
     div.className = `game-item ${selectedGame === game ? 'active' : ''} ${game.isFavorite ? 'favorite' : ''}`;
 
     div.innerHTML = `
+      <div class="game-status-dot ${running ? 'active' : ''}" aria-label="${running ? 'Running' : 'Stopped'}"></div>
       <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
@@ -185,7 +224,7 @@ function openGameContextMenu(game, x, y) {
 
   deleteBtn.addEventListener('click', async () => {
     // Avoid deleting the currently running selection
-    if (isRunning && selectedGame && selectedGame.appId === game.appId && selectedGame.exe === game.exe) {
+      if (isGameRunning(game) && selectedGame && makeGameKey(selectedGame) === makeGameKey(game)) {
       log('Stop the running game before deleting it.', 'log-danger');
       closeContextMenu();
       return;
@@ -222,7 +261,6 @@ async function toggleFavorite(game) {
 }
 
 async function selectGame(game) {
-  if (isRunning) return;
   selectedGame = game;
 
   heroEmptyState.style.display = 'none';
@@ -235,7 +273,7 @@ async function selectGame(game) {
 
   await launcherApi.selectGame(game);
 
-  resetHeroState();
+  syncSelectedGameLaunchState();
   renderMainList(searchInput.value);
 }
 
@@ -516,8 +554,10 @@ async function ensureDatabaseSynced() {
 launchBtn.addEventListener('click', async () => {
   if (!selectedGame) return;
 
-  if (!isRunning) {
-    isRunning = true;
+  const selectedKey = makeGameKey(selectedGame);
+  const currentlyRunning = isGameRunning(selectedGame);
+
+  if (!currentlyRunning) {
     launchBtn.classList.add('running');
     document.getElementById('launchBtnText').innerText = 'Stop Playing';
     document.getElementById('playIcon').style.display = 'none';
@@ -530,16 +570,20 @@ launchBtn.addEventListener('click', async () => {
 
     const r = await launcherApi.launchGame(selectedGame);
     if (r.ok) {
+      runningGames.add(selectedKey);
+      renderMainList(searchInput.value);
+      syncSelectedGameLaunchState();
       log(`Process started: ${selectedGame.exe}`, 'log-success');
     } else {
       log(`Failed to launch: ${r.error}`, 'log-danger');
-      isRunning = false;
+      launchBtn.classList.remove('running');
       resetHeroState();
     }
   } else {
-    await launcherApi.stopGame();
-    isRunning = false;
-    resetHeroState();
+    await launcherApi.stopGame(selectedGame);
+    runningGames.delete(selectedKey);
+    renderMainList(searchInput.value);
+    syncSelectedGameLaunchState();
     log('Process terminated.', 'log-danger');
   }
 });
@@ -616,11 +660,16 @@ const closeBtn = document.getElementById('closeBtn');
 minBtn.addEventListener('click', () => launcherApi.minimize());
 closeBtn.addEventListener('click', () => launcherApi.close());
 
-launcherApi.onGameExited(() => {
-  if (!isRunning) return;
-  isRunning = false;
-  resetHeroState();
-  log('Process exited.', 'log-danger');
+launcherApi.onGameExited((payload = {}) => {
+  const exitedKey = payload && payload.gameKey ? String(payload.gameKey) : '';
+  if (!exitedKey) return;
+
+  runningGames.delete(exitedKey);
+  renderMainList(searchInput.value);
+  if (selectedGame && makeGameKey(selectedGame) === exitedKey) {
+    syncSelectedGameLaunchState();
+    log('Process exited.', 'log-danger');
+  }
   updateDetailsPanel();
 });
 

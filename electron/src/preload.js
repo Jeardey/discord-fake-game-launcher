@@ -17,12 +17,12 @@ contextBridge.exposeInMainWorld('launcherApi', {
   // Run
   selectGame: (game) => ipcRenderer.invoke('launcher/selectGame', game),
   launchGame: (game) => ipcRenderer.invoke('launcher/launchGame', game),
-  stopGame: () => ipcRenderer.invoke('launcher/stopGame'),
+  stopGame: (game) => ipcRenderer.invoke('launcher/stopGame', game),
 
   // Events
   onGameExited: (handler) => {
     ipcRenderer.removeAllListeners('launcher/gameExited');
-    ipcRenderer.on('launcher/gameExited', handler);
+    ipcRenderer.on('launcher/gameExited', (_evt, payload) => handler(payload));
   },
 
   // Updates
