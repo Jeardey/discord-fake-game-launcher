@@ -45,6 +45,9 @@ function fallbackExeNameFromTitle(name) {
     .slice(0, 120);
 
   const safeBase = base || 'Game';
+  if (process.platform === 'darwin') {
+    return safeBase.replace(/\.exe$/i, '');
+  }
   return safeBase.toLowerCase().endsWith('.exe') ? safeBase : `${safeBase}.exe`;
 }
 
@@ -73,7 +76,10 @@ function toDatabaseGames(detectableApps) {
     const bestExe = pickBestExecutable(appEntry);
 
     const appId = String(appEntry.id || '');
-    const exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
+    let exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
+    if (process.platform === 'darwin') {
+      exeName = exeName.replace(/\.exe$/i, '');
+    }
 
     result.push({
       id: appId,
@@ -207,9 +213,21 @@ async function findDummyGameTemplate() {
 
   // Packaged build: bundled via electron-builder extraResources
   if (app.isPackaged) {
+    if (process.platform === 'darwin') {
+      const bundledMac = path.join(process.resourcesPath, 'dummygame', 'DummyGame');
+      if (fs.existsSync(bundledMac)) return bundledMac;
+    }
     const bundled = path.join(process.resourcesPath, 'dummygame', 'DummyGame.exe');
     if (fs.existsSync(bundled)) return bundled;
   }
+
+  // Local build cache fallback (dev/local builds): ../build-resources/dummygame/DummyGame[.exe]
+  if (process.platform === 'darwin') {
+    const localResourceMac = path.join(__dirname, '..', 'build-resources', 'dummygame', 'DummyGame');
+    if (fs.existsSync(localResourceMac)) return localResourceMac;
+  }
+  const localResource = path.join(__dirname, '..', 'build-resources', 'dummygame', 'DummyGame.exe');
+  if (fs.existsSync(localResource)) return localResource;
 
   // Repo-relative fallback (dev): ../src/DummyGame/bin/**/DummyGame.exe
   const repoRoot = path.resolve(app.getAppPath(), '..', '..');
@@ -222,6 +240,9 @@ async function findDummyGameTemplate() {
   for (const cfg of configs) {
     candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows', 'DummyGame.exe'));
     candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows7.0', 'DummyGame.exe'));
+    if (process.platform === 'darwin') {
+      candidates.push(path.join(dummyProjBin, cfg, 'net8.0-windows', 'DummyGame'));
+    }
   }
 
   for (const c of candidates) {
@@ -244,7 +265,7 @@ async function findDummyGameTemplate() {
         // avoid huge recursion
         if (p.toLowerCase().includes('ref')) continue;
         stack.push(p);
-      } else if (e.isFile() && e.name.toLowerCase() === 'dummygame.exe') {
+      } else if (e.isFile() && (e.name.toLowerCase() === 'dummygame.exe' || (process.platform === 'darwin' && e.name === 'DummyGame'))) {
         return p;
       }
     }
@@ -256,7 +277,7 @@ async function findDummyGameTemplate() {
 async function ensureFakeExeForGame(game, paths) {
   const dummySourceExe = await findDummyGameTemplate();
   if (!dummySourceExe) {
-    throw new Error('Could not find DummyGame.exe. Run: npm run build:dummy (from electron/), or set DUMMYGAME_EXE env var to the built DummyGame.exe path.');
+    throw new Error('Could not find DummyGame. Run: npm run build:dummy:mac (from electron/), or set DUMMYGAME_EXE env var.');
   }
 
   ensureDirSync(paths.gamesRoot);
@@ -265,16 +286,28 @@ async function ensureFakeExeForGame(game, paths) {
 
   const exeRelPath = normalizeExeRelPath(game.exe);
   const exeFolderPart = path.dirname(exeRelPath) === '.' ? '' : path.dirname(exeRelPath);
-  const exeFileName = path.basename(exeRelPath);
+  let exeFileName = path.basename(exeRelPath);
+
+  if (process.platform === 'darwin') {
+    exeFileName = exeFileName.replace(/\.exe$/i, '') || sanitizeFolderName(game.name) || 'Game';
+  }
 
   const gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
   ensureDirSync(gameFolder);
 
   const destExePath = path.join(gameFolder, exeFileName);
 
+  // If on macOS and an old .exe exists, clean it up
+  if (process.platform === 'darwin' && fs.existsSync(destExePath + '.exe')) {
+    try { await fsp.unlink(destExePath + '.exe'); } catch {}
+  }
+
   if (!fs.existsSync(destExePath)) {
     // Copy main exe but rename to target exe file name
     await fsp.copyFile(dummySourceExe, destExePath);
+    if (process.platform !== 'win32') {
+      try { await fsp.chmod(destExePath, 0o755); } catch {}
+    }
 
     // Copy sidecar files DummyGame.* from source dir
     const sourceDir = path.dirname(dummySourceExe);
@@ -289,8 +322,13 @@ async function ensureFakeExeForGame(game, paths) {
       const dest = path.join(gameFolder, fileName);
       if (!fs.existsSync(dest)) {
         await fsp.copyFile(src, dest);
+        if (process.platform !== 'win32') {
+          try { await fsp.chmod(dest, 0o755); } catch {}
+        }
       }
     }
+  } else if (process.platform !== 'win32') {
+    try { await fsp.chmod(destExePath, 0o755); } catch {}
   }
 
   return { destExePath, workingDirectory: path.dirname(destExePath) };
@@ -322,8 +360,8 @@ function coerceReleaseNotesToText(releaseNotes) {
 }
 
 async function maybeCheckForUpdates() {
-  // Updates only make sense in packaged builds.
-  if (!app.isPackaged) return;
+  // Updates only make sense in packaged builds on Windows (upstream GitHub releases are Windows-only).
+  if (!app.isPackaged || process.platform !== 'win32') return;
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -437,13 +475,17 @@ ipcMain.handle('launcher/getMyGames', async () => {
   const list = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(list) ? list : [];
 
-  // Privacy/safety: remove any persisted artwork fields from older versions.
+  // Privacy/safety: remove any persisted artwork fields from older versions, and strip .exe on macOS
   let changed = false;
   for (const g of safeList) {
     if (g && typeof g === 'object') {
       if (Object.prototype.hasOwnProperty.call(g, 'icon')) { delete g.icon; changed = true; }
       if (Object.prototype.hasOwnProperty.call(g, 'thumbnail')) { delete g.thumbnail; changed = true; }
       if (Object.prototype.hasOwnProperty.call(g, 'igdbId')) { delete g.igdbId; changed = true; }
+      if (process.platform === 'darwin' && typeof g.exe === 'string' && g.exe.toLowerCase().endsWith('.exe')) {
+        g.exe = g.exe.replace(/\.exe$/i, '');
+        changed = true;
+      }
     }
   }
   if (changed) {
@@ -460,10 +502,15 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
   const myGames = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(myGames) ? myGames : [];
 
+  let exeName = String(game?.exe || '');
+  if (process.platform === 'darwin') {
+    exeName = exeName.replace(/\.exe$/i, '') || sanitizeFolderName(game?.name) || 'Game';
+  }
+
   const entry = {
-    appId: String(game?.id || ''),
+    appId: String(game?.id || game?.appId || ''),
     name: String(game?.name || 'Game'),
-    exe: String(game?.exe || ''),
+    exe: exeName,
     isFavorite: false
   };
 
@@ -483,9 +530,11 @@ ipcMain.handle('launcher/toggleFavorite', async (_evt, { appId, exe }) => {
   const myGames = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(myGames) ? myGames : [];
 
+  const norm = (v) => process.platform === 'darwin' ? String(v || '').replace(/\.exe$/i, '') : String(v || '');
+
   let updated = null;
   for (const g of safeList) {
-    if (String(g?.appId || '') === String(appId || '') && String(g?.exe || '') === String(exe || '')) {
+    if (String(g?.appId || '') === String(appId || '') && norm(g?.exe) === norm(exe)) {
       g.isFavorite = !g.isFavorite;
       updated = g;
       break;
@@ -501,10 +550,12 @@ ipcMain.handle('launcher/deleteGame', async (_evt, { appId, exe }) => {
   const myGames = await readJsonIfExists(paths.myGamesPath, []);
   const safeList = Array.isArray(myGames) ? myGames : [];
 
+  const norm = (v) => process.platform === 'darwin' ? String(v || '').replace(/\.exe$/i, '') : String(v || '');
+
   const before = safeList.length;
   const filtered = safeList.filter(g => !(
     String(g?.appId || '') === String(appId || '') &&
-    String(g?.exe || '') === String(exe || '')
+    norm(g?.exe) === norm(exe)
   ));
 
   if (filtered.length !== before) {

@@ -674,9 +674,12 @@ launcherApi.onGameExited((payload = {}) => {
 });
 
 (async function init() {
-  await ensureDatabaseSynced();
+  // Load local library immediately so the UI is instantly ready
   await refreshMyGames();
   renderMainList('');
+
+  // Sync Discord database in background
+  ensureDatabaseSynced();
 
   // Update notifications
   if (launcherApi.onUpdateAvailable) {

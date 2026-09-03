@@ -14,9 +14,14 @@
     "sync:gamelist": "node ./scripts/sync-gamelist.js",
     "build:dummy": "dotnet build ../src/DummyGame/DummyGame.csproj -c Release",
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
+    "build:dummy:mac": "node ./scripts/build-dummy-mac.js",
     "dist": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:publish": "electron-builder --win nsis --publish always"
+    "dist:publish": "electron-builder --win nsis --publish always",
+    "dist:mac": "npm run build:dummy:mac && electron-builder --mac --publish never",
+    "dist:mac:dmg": "npm run build:dummy:mac && electron-builder --mac dmg --publish never",
+    "dist:mac:dir": "npm run build:dummy:mac && electron-builder --mac --dir --publish never",
+    "build:mac": "npm run dist:mac"
   },
   "devDependencies": {
     "electron": "^30.0.0",
