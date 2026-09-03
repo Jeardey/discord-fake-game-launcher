@@ -54,3 +54,22 @@ dotnet build ./src/DummyGame/DummyGame.csproj -c Release
    ```
 
 The installer will be created in `electron/dist/`.
+
+### Building on macOS
+
+On macOS, you only need Node.js and standard Xcode Command Line Tools (`clang`).
+
+1. **Build and Package for macOS**:
+   ```bash
+   cd electron
+   npm install
+   npm run dist:mac
+   ```
+
+   The `.app` bundle and installer will be generated in `electron/dist/`.
+
+2. **Run on macOS**:
+   ```bash
+   ./run_on_mac.sh
+   ```
+
