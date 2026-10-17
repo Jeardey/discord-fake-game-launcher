@@ -27,6 +27,13 @@
           Add Game
         </button>
       </div>
+      <div class="running-panel" id="runningPanel" style="display:none;">
+        <div class="running-header">
+          <span>Now Playing <span class="running-count" id="runningCount">0</span></span>
+          <button class="running-stop-all" id="stopAllBtn">Stop all</button>
+        </div>
+        <div class="running-list" id="runningList"></div>
+      </div>
       <div class="game-list-container" id="gameList"></div>
     </div>
 
@@ -98,9 +105,42 @@
       </div>
       <div class="modal-body">
         <div class="search-wrapper">
-          <input type="text" class="search-input" id="modalSearchInput" placeholder="Search for games..." />
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" class="search-input" id="modalSearchInput" placeholder="Search for games... (e.g. modern warfare 4, cod mw4, bo7)" />
+        </div>
+        <div class="modal-toolbar">
+          <div class="segmented" role="group" aria-label="Sort">
+            <button class="segmented-btn active" data-sort="name" id="sortNameBtn">A–Z</button>
+            <button class="segmented-btn" data-sort="newest" id="sortNewestBtn">Newest</button>
+          </div>
+          <span class="modal-count" id="modalCount"></span>
+          <button class="btn-link" id="openCustomGameBtn">+ Custom game</button>
         </div>
         <div class="modal-list" id="modalList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="customGameModal">
+    <div class="modal-container" style="width: 480px;">
+      <div class="modal-header">
+        <span>Custom Game</span>
+        <svg style="cursor:pointer;" id="customCloseBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </div>
+      <div class="modal-body">
+        <div class="form-hint">
+          For games that aren't in Discord's database yet. Discord won't recognise it by itself:
+          launch it here, then in Discord go to <b>User Settings → Registered Games → Add it!</b> and pick the process.
+        </div>
+        <label class="form-label" for="customNameInput">Name</label>
+        <input type="text" class="text-input" id="customNameInput" placeholder="My Game" maxlength="120" />
+        <label class="form-label" for="customExeInput">Executable (optional)</label>
+        <input type="text" class="text-input mono" id="customExeInput" placeholder="mygame.exe" maxlength="200" />
+        <div class="form-error" id="customError"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 16px;">
+          <button class="btn-add-game" id="customCancelBtn" style="width:auto; padding:10px 14px;">Cancel</button>
+          <button class="btn-main" id="customSaveBtn" style="height:auto; padding:10px 18px;">Add to library</button>
+        </div>
       </div>
     </div>
   </div>

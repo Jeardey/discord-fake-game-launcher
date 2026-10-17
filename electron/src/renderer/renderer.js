@@ -4,15 +4,56 @@ const starSvg = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24
 
 let myGames = [];
 let selectedGame = null;
-let runningGames = new Set();
+
+// Games currently running, as reported by the main process: [{ appId, name, exe, startedAt }]
+let runningGames = [];
 
 let modalState = {
   filter: '',
+  sort: 'name',
   offset: 0,
   limit: 200,
   hasMore: false,
-  loading: false
+  loading: false,
+  requestId: 0
 };
+
+// Same key format as src/launcher-state.js (the renderer can't require it).
+function makeGameKey(game) {
+  if (!game || typeof game !== 'object') return '';
+  const appId = String(game.appId ?? '');
+  const exe = String(game.exe ?? '');
+  const key = `${appId}::${exe}`;
+  return key === '::' ? '' : key;
+}
+
+function sameGame(a, b) {
+  const key = makeGameKey(a);
+  return Boolean(key) && key === makeGameKey(b);
+}
+
+function isGameRunning(game) {
+  const key = makeGameKey(game);
+  return Boolean(key) && runningGames.some(r => makeGameKey(r) === key);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
 
 const gameListEl = document.getElementById('gameList');
 const heroEmptyState = document.getElementById('heroEmptyState');
@@ -29,6 +70,18 @@ const modalListEl = document.getElementById('modalList');
 const searchInput = document.getElementById('searchInput');
 const modalSearchInput = document.getElementById('modalSearchInput');
 const contextMenuEl = document.getElementById('contextMenu');
+const modalCountEl = document.getElementById('modalCount');
+
+// Running games panel
+const runningPanel = document.getElementById('runningPanel');
+const runningCountEl = document.getElementById('runningCount');
+const runningListEl = document.getElementById('runningList');
+
+// Custom game modal
+const customGameModal = document.getElementById('customGameModal');
+const customNameInput = document.getElementById('customNameInput');
+const customExeInput = document.getElementById('customExeInput');
+const customErrorEl = document.getElementById('customError');
 
 // Update modal
 const updateModal = document.getElementById('updateModal');
@@ -55,60 +108,91 @@ function log(msg, type = '') {
   const div = document.createElement('div');
   div.className = `log-entry ${type}`;
   const t = new Date().toLocaleTimeString([], { hour12: false });
-  div.innerHTML = `<span class="log-time">[${t}]</span> ${msg}`;
+  div.innerHTML = `<span class="log-time">[${t}]</span> `;
+  div.appendChild(document.createTextNode(String(msg)));
   logArea.appendChild(div);
   logArea.scrollTop = logArea.scrollHeight;
 }
 
+// Hero reflects whether the *selected* game is running; other games may be running too.
 function resetHeroState() {
-  statusDot.style.backgroundColor = 'var(--text-muted)';
-  statusDot.style.color = 'var(--text-muted)';
-  statusText.innerText = 'Ready';
-  statusText.style.color = 'var(--text-muted)';
-
-  launchBtn.classList.remove('running');
-  document.getElementById('launchBtnText').innerText = 'Launch Game';
-  document.getElementById('playIcon').style.display = 'block';
-  document.getElementById('stopIcon').style.display = 'none';
-
-  updateDetailsPanel();
-}
-
-function syncSelectedGameLaunchState() {
-  if (!selectedGame) {
-    resetHeroState();
-    return;
-  }
-
   const running = isGameRunning(selectedGame);
-  if (!running) {
-    resetHeroState();
-    return;
+
+  if (running) {
+    statusDot.style.backgroundColor = 'var(--success)';
+    statusDot.style.color = 'var(--success)';
+    statusText.innerText = 'Playing Now';
+    statusText.style.color = 'var(--success)';
+
+    launchBtn.classList.add('running');
+    document.getElementById('launchBtnText').innerText = 'Stop Playing';
+    document.getElementById('playIcon').style.display = 'none';
+    document.getElementById('stopIcon').style.display = 'block';
+  } else {
+    statusDot.style.backgroundColor = 'var(--text-muted)';
+    statusDot.style.color = 'var(--text-muted)';
+    statusText.innerText = 'Ready';
+    statusText.style.color = 'var(--text-muted)';
+
+    launchBtn.classList.remove('running');
+    document.getElementById('launchBtnText').innerText = 'Launch Game';
+    document.getElementById('playIcon').style.display = 'block';
+    document.getElementById('stopIcon').style.display = 'none';
   }
-
-  statusDot.style.backgroundColor = 'var(--success)';
-  statusDot.style.color = 'var(--success)';
-  statusText.innerText = 'Playing Now';
-  statusText.style.color = 'var(--success)';
-
-  launchBtn.classList.add('running');
-  document.getElementById('launchBtnText').innerText = 'Stop Playing';
-  document.getElementById('playIcon').style.display = 'none';
-  document.getElementById('stopIcon').style.display = 'block';
 
   updateDetailsPanel();
 }
 
-function makeGameKey(game) {
-  if (!game || typeof game !== 'object') return '';
-  const appId = String(game.appId ?? '');
-  const exe = String(game.exe ?? '');
-  const key = `${appId}::${exe}`;
-  return key === '::' ? '' : key;
+function renderRunningPanel() {
+  runningPanel.style.display = runningGames.length ? 'block' : 'none';
+  runningCountEl.textContent = String(runningGames.length);
+  runningListEl.innerHTML = '';
+
+  const now = Date.now();
+  for (const r of runningGames) {
+    const row = document.createElement('div');
+    row.className = 'running-item';
+    row.title = r.exe;
+    row.innerHTML = `
+      <div class="live-dot"></div>
+      <div class="running-item-name">${escapeHtml(r.name)}</div>
+      <div class="running-item-time" data-started="${Number(r.startedAt) || now}">${formatElapsed(now - (Number(r.startedAt) || now))}</div>
+      <button class="running-item-stop" aria-label="Stop ${escapeHtml(r.name)}" title="Stop">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect width="10" height="10" rx="1"/></svg>
+      </button>
+    `;
+
+    row.querySelector('.running-item-stop').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await stopGame(r);
+    });
+
+    row.addEventListener('click', async () => {
+      const game = myGames.find(g => sameGame(g, r));
+      if (game) await selectGame(game);
+    });
+
+    runningListEl.appendChild(row);
+  }
 }
 
-function isGameRunning(game) {
-  return Boolean(game && makeGameKey(game) && runningGames.has(makeGameKey(game)));
+function tickRunningTimers() {
+  const now = Date.now();
+  for (const el of runningListEl.querySelectorAll('.running-item-time')) {
+    el.textContent = formatElapsed(now - Number(el.dataset.started));
+  }
+}
+
+function setRunningGames(list) {
+  runningGames = Array.isArray(list) ? list : [];
+  renderRunningPanel();
+  renderMainList(searchInput.value);
+  resetHeroState();
+}
+
+async function stopGame(game) {
+  await launcherApi.stopGame({ appId: game.appId, exe: game.exe });
+  log(`Stopped ${game.name}.`, 'log-danger');
 }
 
 function updateDetailsPanel() {
@@ -146,11 +230,12 @@ function renderMainList(filter = '') {
 
     const div = document.createElement('div');
     const running = isGameRunning(game);
-    div.className = `game-item ${selectedGame === game ? 'active' : ''} ${game.isFavorite ? 'favorite' : ''}`;
+    div.className = `game-item ${sameGame(selectedGame, game) ? 'active' : ''} ${game.isFavorite ? 'favorite' : ''} ${running ? 'running' : ''}`;
+    div.title = game.exe;
 
     div.innerHTML = `
       <div class="game-status-dot ${running ? 'active' : ''}" aria-label="${running ? 'Running' : 'Stopped'}"></div>
-      <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
+      <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(game.name)}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
 
@@ -179,7 +264,9 @@ function closeContextMenu() {
 function openGameContextMenu(game, x, y) {
   if (!game) return;
 
+  const running = isGameRunning(game);
   contextMenuEl.innerHTML = `
+    <div class="context-menu-item" id="ctxToggleRun">${running ? 'Stop' : 'Launch'}</div>
     <div class="context-menu-item" id="ctxShortcut">Create shortcut</div>
     <div class="context-menu-item danger" id="ctxDelete">Delete from library</div>
   `;
@@ -206,8 +293,15 @@ function openGameContextMenu(game, x, y) {
     contextMenuEl.style.top = `${top}px`;
   });
 
+  const toggleRunBtn = document.getElementById('ctxToggleRun');
   const shortcutBtn = document.getElementById('ctxShortcut');
   const deleteBtn = document.getElementById('ctxDelete');
+
+  toggleRunBtn.addEventListener('click', async () => {
+    closeContextMenu();
+    if (isGameRunning(game)) await stopGame(game);
+    else await launchGame(game);
+  });
 
   shortcutBtn.addEventListener('click', async () => {
     closeContextMenu();
@@ -223,8 +317,8 @@ function openGameContextMenu(game, x, y) {
   });
 
   deleteBtn.addEventListener('click', async () => {
-    // Avoid deleting the currently running selection
-      if (isGameRunning(game) && selectedGame && makeGameKey(selectedGame) === makeGameKey(game)) {
+    // Avoid deleting a game that is running
+    if (isGameRunning(game)) {
       log('Stop the running game before deleting it.', 'log-danger');
       closeContextMenu();
       return;
@@ -261,6 +355,7 @@ async function toggleFavorite(game) {
 }
 
 async function selectGame(game) {
+  if (!game) return;
   selectedGame = game;
 
   heroEmptyState.style.display = 'none';
@@ -273,7 +368,7 @@ async function selectGame(game) {
 
   await launcherApi.selectGame(game);
 
-  syncSelectedGameLaunchState();
+  resetHeroState();
   renderMainList(searchInput.value);
 }
 
@@ -427,16 +522,28 @@ function debounce(fn, waitMs) {
 }
 
 function resetAndRenderModal(filter) {
-    updateDetailsPanel();
   modalState = {
     filter: String(filter || ''),
+    sort: modalState.sort,
     offset: 0,
     limit: 200,
     hasMore: false,
-    loading: false
+    loading: false,
+    requestId: modalState.requestId + 1
   };
   modalListEl.innerHTML = '';
+  modalCountEl.textContent = '';
   renderNextModalPage();
+}
+
+function setModalSort(sort) {
+  if (modalState.sort === sort) return;
+  modalState.sort = sort;
+  for (const btn of document.querySelectorAll('.segmented-btn[data-sort]')) {
+    btn.classList.toggle('active', btn.dataset.sort === sort);
+  }
+  modalListEl.scrollTop = 0;
+  resetAndRenderModal(modalSearchInput.value);
 }
 
 // --- NEW DETECTION WARNING PROMISE HELPERS ---
@@ -466,53 +573,66 @@ function promptDetectionWarning() {
 }
 // ---------------------------------------------
 
+async function addDatabaseGame(game) {
+  // --- CHECK DETECTION FLAG BEFORE ADDING ---
+  if (game.usesNewDetection) {
+    const userWantsToProceed = await promptDetectionWarning();
+    if (!userWantsToProceed) {
+      log(`Cancelled adding ${game.name}.`, 'log-entry');
+      return; // Abort silently
+    }
+  }
+  // ------------------------------------------
+
+  const installed = await launcherApi.addGame(game);
+  log(`Installed ${installed.name} successfully.`, 'log-success');
+  closeModal();
+  await refreshMyGames();
+  await selectGame(myGames.find(g => sameGame(g, installed)) || myGames[myGames.length - 1]);
+}
+
 async function renderNextModalPage() {
   if (modalState.loading) return;
   modalState.loading = true;
+  const requestId = modalState.requestId;
 
   let page;
   try {
-    page = await launcherApi.getDatabaseGames(modalState.filter, modalState.offset, modalState.limit);
+    page = await launcherApi.getDatabaseGames(modalState.filter, modalState.offset, modalState.limit, modalState.sort);
   } catch (e) {
+    if (requestId !== modalState.requestId) return;
     modalState.loading = false;
-    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Try again. (${String(e.message || e)})</div>`;
-      updateDetailsPanel();
+    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Try again. (${escapeHtml(String(e.message || e))})</div>`;
     return;
   }
+
+  // The search changed while this page was loading; a newer request owns the list now.
+  if (requestId !== modalState.requestId) return;
 
   const frag = document.createDocumentFragment();
   const items = Array.isArray(page?.items) ? page.items : [];
 
   for (const game of items) {
-    if (myGames.some(mg => mg.appId === game.id && mg.exe === game.exe)) continue;
+    // Games already in the library stay visible (marked), so searching for them doesn't look like they're missing.
+    const libraryGame = myGames.find(mg => mg.appId === game.id && mg.exe === game.exe);
 
     const div = document.createElement('div');
-    updateDetailsPanel();
-    div.className = 'modal-item';
+    div.className = `modal-item ${libraryGame ? 'in-library' : ''}`;
     div.innerHTML = `
       <div class="modal-item-info">
-        <span class="modal-item-name">${game.name}</span>
-        <span class="modal-item-exe">${game.exe}</span>
+        <span class="modal-item-name">${escapeHtml(game.name)}${game.usesNewDetection ? '<span class="modal-item-badge" title="Discord has no executable name for this game">NO EXE</span>' : ''}</span>
+        <span class="modal-item-exe">${escapeHtml(game.exe)}</span>
       </div>
-      <div style="color:var(--brand); font-weight:bold; font-size:12px;">+ ADD</div>
+      <div class="modal-item-action">${libraryGame ? '✓ IN LIBRARY' : '+ ADD'}</div>
     `;
 
     div.onclick = async () => {
-      // --- CHECK DETECTION FLAG BEFORE ADDING ---
-      if (game.usesNewDetection) {
-        const userWantsToProceed = await promptDetectionWarning();
-        if (!userWantsToProceed) {
-          log(`Cancelled adding ${game.name}.`, 'log-entry');
-          return; // Abort silently
-        }
+      if (libraryGame) {
+        closeModal();
+        await selectGame(libraryGame);
+        return;
       }
-      // ------------------------------------------
-
-      const installed = await launcherApi.addGame(game);
-      log(`Installed ${installed.name} successfully.`, 'log-success');
-      closeModal();
-      await refreshMyGames();
-      await selectGame(myGames[myGames.length - 1]);
+      await addDatabaseGame(game);
     };
 
     frag.appendChild(div);
@@ -520,15 +640,62 @@ async function renderNextModalPage() {
 
   modalListEl.appendChild(frag);
 
+  const total = Number(page?.total);
+  if (Number.isFinite(total)) {
+    modalCountEl.textContent = `${total.toLocaleString()} ${total === 1 ? 'game' : 'games'}`;
+  }
+
   const hasAnyRows = modalListEl.querySelector('.modal-item') != null;
   if (!hasAnyRows && modalState.offset === 0) {
-    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">No results.</div>`;
+    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">No results. Not in Discord's database? Use <b>+ Custom game</b>.</div>`;
   }
 
   modalState.hasMore = Boolean(page?.hasMore);
-  modalState.offset += Number.isFinite(page?.items?.length) ? page.items.length : items.length;
+  modalState.offset += items.length;
   modalState.loading = false;
 }
+
+// --- CUSTOM GAMES ---
+function openCustomGameModal() {
+  customNameInput.value = modalSearchInput.value.trim();
+  customExeInput.value = '';
+  customErrorEl.textContent = '';
+  customGameModal.style.display = 'flex';
+  customNameInput.focus();
+}
+
+function closeCustomGameModal() {
+  customGameModal.style.display = 'none';
+}
+
+async function saveCustomGame() {
+  const name = customNameInput.value.trim();
+  let exe = customExeInput.value.trim().replace(/^["']+|["']+$/g, '');
+
+  if (!name) {
+    customErrorEl.textContent = 'Enter a name.';
+    customNameInput.focus();
+    return;
+  }
+
+  if (exe) {
+    // Only a file name or a relative path like "bin/game.exe" — never an absolute path or "..".
+    if (/^[a-z]:/i.test(exe) || /^[\\/]/.test(exe) || /(^|[\\/])\.\.([\\/]|$)/.test(exe) || /[<>:"|?*]/.test(exe)) {
+      customErrorEl.textContent = 'Use just a file name like "game.exe" (or a relative path like "bin/game.exe").';
+      customExeInput.focus();
+      return;
+    }
+    if (!exe.toLowerCase().endsWith('.exe')) exe += '.exe';
+  }
+
+  const installed = await launcherApi.addGame({ id: '', name, exe, isCustom: true });
+  log(`Added custom game ${installed.name} (${installed.exe}).`, 'log-success');
+  closeCustomGameModal();
+  closeModal();
+  await refreshMyGames();
+  await selectGame(myGames.find(g => sameGame(g, installed)) || myGames[myGames.length - 1]);
+}
+// --------------------
 
 async function refreshMyGames() {
   myGames = await launcherApi.getMyGames();
@@ -551,42 +718,47 @@ async function ensureDatabaseSynced() {
   }
 }
 
+async function launchGame(game) {
+  const r = await launcherApi.launchGame(game);
+  if (r?.ok && r.alreadyRunning) {
+    log(`${game.name} is already running.`);
+  } else if (r?.ok) {
+    log(`Process started: ${game.name} (${game.exe})`, 'log-success');
+  } else {
+    log(`Failed to launch ${game.name}: ${r?.error || 'unknown error'}`, 'log-danger');
+  }
+}
+
 launchBtn.addEventListener('click', async () => {
   if (!selectedGame) return;
 
-  const selectedKey = makeGameKey(selectedGame);
-  const currentlyRunning = isGameRunning(selectedGame);
-
-  if (!currentlyRunning) {
-    launchBtn.classList.add('running');
-    document.getElementById('launchBtnText').innerText = 'Stop Playing';
-    document.getElementById('playIcon').style.display = 'none';
-    document.getElementById('stopIcon').style.display = 'block';
-
-    statusDot.style.backgroundColor = 'var(--success)';
-    statusDot.style.color = 'var(--success)';
-    statusText.innerText = 'Playing Now';
-    statusText.style.color = 'var(--success)';
-
-    const r = await launcherApi.launchGame(selectedGame);
-    if (r.ok) {
-      runningGames.add(selectedKey);
-      renderMainList(searchInput.value);
-      syncSelectedGameLaunchState();
-      log(`Process started: ${selectedGame.exe}`, 'log-success');
-    } else {
-      log(`Failed to launch: ${r.error}`, 'log-danger');
-      launchBtn.classList.remove('running');
-      resetHeroState();
-    }
-  } else {
-    await launcherApi.stopGame(selectedGame);
-    runningGames.delete(selectedKey);
-    renderMainList(searchInput.value);
-    syncSelectedGameLaunchState();
-    log('Process terminated.', 'log-danger');
+  launchBtn.disabled = true;
+  try {
+    if (isGameRunning(selectedGame)) await stopGame(selectedGame);
+    else await launchGame(selectedGame);
+  } finally {
+    launchBtn.disabled = false;
   }
 });
+
+document.getElementById('stopAllBtn').addEventListener('click', async () => {
+  const count = runningGames.length;
+  await launcherApi.stopAllGames();
+  log(`Stopped ${count} ${count === 1 ? 'game' : 'games'}.`, 'log-danger');
+});
+
+document.getElementById('sortNameBtn').addEventListener('click', () => setModalSort('name'));
+document.getElementById('sortNewestBtn').addEventListener('click', () => setModalSort('newest'));
+
+document.getElementById('openCustomGameBtn').addEventListener('click', openCustomGameModal);
+document.getElementById('customCloseBtn').addEventListener('click', closeCustomGameModal);
+document.getElementById('customCancelBtn').addEventListener('click', closeCustomGameModal);
+document.getElementById('customSaveBtn').addEventListener('click', saveCustomGame);
+for (const input of [customNameInput, customExeInput]) {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveCustomGame();
+  });
+}
 
 document.getElementById('openAddModalBtn').onclick = openModal;
 document.getElementById('closeModalBtn').onclick = closeModal;
@@ -613,7 +785,10 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeContextMenu();
+  if (e.key !== 'Escape') return;
+  closeContextMenu();
+  if (customGameModal.style.display === 'flex') closeCustomGameModal();
+  else if (addGameModal.style.display === 'flex') closeModal();
 });
 
 window.addEventListener('blur', () => closeContextMenu());
@@ -660,23 +835,19 @@ const closeBtn = document.getElementById('closeBtn');
 minBtn.addEventListener('click', () => launcherApi.minimize());
 closeBtn.addEventListener('click', () => launcherApi.close());
 
-launcherApi.onGameExited((payload = {}) => {
-  const exitedKey = payload && payload.gameKey ? String(payload.gameKey) : '';
-  if (!exitedKey) return;
-
-  runningGames.delete(exitedKey);
-  renderMainList(searchInput.value);
-  if (selectedGame && makeGameKey(selectedGame) === exitedKey) {
-    syncSelectedGameLaunchState();
-    log('Process exited.', 'log-danger');
-  }
-  updateDetailsPanel();
+launcherApi.onGameExited((payload) => {
+  // The process ended by itself (closed window, crash...). runningChanged updates the UI.
+  log(`Process exited: ${payload?.name || 'game'}.`, 'log-danger');
 });
+
+launcherApi.onRunningChanged((list) => setRunningGames(list));
+
+window.setInterval(tickRunningTimers, 1000);
 
 (async function init() {
   await ensureDatabaseSynced();
   await refreshMyGames();
-  renderMainList('');
+  setRunningGames(await launcherApi.getRunningGames());
 
   // Update notifications
   if (launcherApi.onUpdateAvailable) {

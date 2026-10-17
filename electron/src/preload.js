@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('launcherApi', {
 
   // Data
   syncGameList: () => ipcRenderer.invoke('launcher/syncGameList'),
-  getDatabaseGames: (filter, offset, limit) => ipcRenderer.invoke('launcher/getDatabaseGames', { filter, offset, limit }),
+  getDatabaseGames: (filter, offset, limit, sort) => ipcRenderer.invoke('launcher/getDatabaseGames', { filter, offset, limit, sort }),
   getMyGames: () => ipcRenderer.invoke('launcher/getMyGames'),
   addGame: (game) => ipcRenderer.invoke('launcher/addGame', game),
   toggleFavorite: (appId, exe) => ipcRenderer.invoke('launcher/toggleFavorite', { appId, exe }),
@@ -18,11 +18,17 @@ contextBridge.exposeInMainWorld('launcherApi', {
   selectGame: (game) => ipcRenderer.invoke('launcher/selectGame', game),
   launchGame: (game) => ipcRenderer.invoke('launcher/launchGame', game),
   stopGame: (game) => ipcRenderer.invoke('launcher/stopGame', game),
+  stopAllGames: () => ipcRenderer.invoke('launcher/stopAllGames'),
+  getRunningGames: () => ipcRenderer.invoke('launcher/getRunningGames'),
 
   // Events
   onGameExited: (handler) => {
     ipcRenderer.removeAllListeners('launcher/gameExited');
     ipcRenderer.on('launcher/gameExited', (_evt, payload) => handler(payload));
+  },
+  onRunningChanged: (handler) => {
+    ipcRenderer.removeAllListeners('launcher/runningChanged');
+    ipcRenderer.on('launcher/runningChanged', (_evt, payload) => handler(payload));
   },
 
   // Updates

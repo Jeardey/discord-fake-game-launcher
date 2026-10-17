@@ -571,4 +571,192 @@ body {
   color: var(--text-muted);
 }
 
+/* --- Running games (sidebar) --- */
+.running-panel {
+  background-color: rgba(59, 165, 92, 0.08);
+  border: 1px solid rgba(59, 165, 92, 0.25);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+.running-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--success);
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+
+.running-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background-color: var(--success);
+  color: #fff;
+  text-align: center;
+}
+
+.running-stop-all {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.running-stop-all:hover { color: var(--danger); background-color: var(--bg-hover); }
+
+.running-list { max-height: 180px; overflow-y: auto; }
+
+.running-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-normal);
+}
+
+.running-item:hover { background-color: var(--bg-hover); }
+
+.running-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.running-item-time { font-family: 'Consolas', monospace; font-size: 11px; color: var(--text-muted); }
+
+.running-item-stop {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.running-item-stop:hover { background-color: rgba(237, 66, 69, 0.25); color: var(--danger); }
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--success);
+  box-shadow: 0 0 5px var(--success);
+  flex-shrink: 0;
+}
+
+.game-item.running { color: var(--text-normal); }
+
+/* --- Database modal toolbar --- */
+.modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.segmented {
+  display: inline-flex;
+  background-color: var(--bg-darkest);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.segmented-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.segmented-btn:hover { color: var(--text-normal); }
+.segmented-btn.active { background-color: var(--bg-card); color: var(--text-header); }
+
+.modal-count { font-size: 12px; color: var(--text-muted); }
+
+.btn-link {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--brand);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.btn-link:hover { background-color: var(--bg-hover); }
+
+.modal-item-action { color: var(--brand); font-weight: bold; font-size: 12px; white-space: nowrap; }
+.modal-item.in-library { cursor: default; }
+.modal-item.in-library .modal-item-action { color: var(--success); }
+
+.modal-item-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+  background-color: rgba(250, 166, 26, 0.15);
+  color: #faa61a;
+}
+
+/* --- Custom game form --- */
+.form-hint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.form-hint b { color: var(--text-normal); }
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin: 10px 0 6px;
+}
+
+.text-input {
+  width: 100%;
+  background-color: var(--bg-darkest);
+  border: 1px solid transparent;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-normal);
+  outline: none;
+  font-size: 14px;
+  user-select: text;
+}
+
+.text-input:focus { border-color: var(--brand); }
+.text-input.mono { font-family: 'Consolas', monospace; }
+
+.form-error { color: var(--danger); font-size: 12px; min-height: 16px; margin-top: 8px; }
+
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

@@ -66,6 +66,33 @@ function pickBestExecutable(appEntry) {
   return anyWin32 || null;
 }
 
+// Roman numerals are mapped to digits so "Modern Warfare III" and "modern warfare 3" match.
+// Single letters (i, v, x) are left alone: too many real titles use them as words.
+const ROMAN_NUMERALS = { ii: '2', iii: '3', iv: '4', vi: '6', vii: '7', viii: '8', ix: '9' };
+
+// Lowercase, strip accents, ®/™ and punctuation so "Call of Duty®: Modern Warfare® 4"
+// and "call of duty modern warfare 4" compare equal.
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map(w => ROMAN_NUMERALS[w] || w)
+    .join(' ');
+}
+
+// "call of duty modern warfare 4" -> "codmw4", so searches like "cod mw4" work.
+function acronymOf(normalized) {
+  return normalized
+    .split(' ')
+    .map(w => (/^\d+$/.test(w) ? w : w[0]))
+    .join('');
+}
+
 function toDatabaseGames(detectableApps) {
   const result = [];
   for (const appEntry of detectableApps || []) {
@@ -75,18 +102,87 @@ function toDatabaseGames(detectableApps) {
     const appId = String(appEntry.id || '');
     const exeName = bestExe?.name ? String(bestExe.name) : fallbackExeNameFromTitle(appEntry.name);
 
+    const winExes = (Array.isArray(appEntry.executables) ? appEntry.executables : [])
+      .filter(e => String(e?.os || '').toLowerCase() === 'win32' && e?.name)
+      .map(e => String(e.name));
+    const aliases = (Array.isArray(appEntry.aliases) ? appEntry.aliases : []).map(String);
+
+    const nameNorm = normalizeSearchText(appEntry.name);
+    const aliasNorms = aliases.map(normalizeSearchText).filter(a => a && a !== nameNorm);
+
+    let idNum = 0n;
+    try { idNum = BigInt(appId); } catch { /* non-numeric id */ }
+
     result.push({
       id: appId,
       name: String(appEntry.name),
       exe: exeName,
       isLauncher: Boolean(bestExe?.is_launcher),
       usesNewDetection: !bestExe || !bestExe.name, // <-- FLAG FOR FRONTEND
-      _nameLower: String(appEntry.name).toLowerCase()
+      _nameNorm: nameNorm,
+      _haystack: [nameNorm, ...aliasNorms, ...winExes.map(normalizeSearchText)].join(' | '),
+      _acronyms: [nameNorm, ...aliasNorms].map(acronymOf),
+      _idNum: idNum
     });
   }
 
   result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
+}
+
+// Higher = better match. 0 = no match.
+function scoreDatabaseGame(g, query, tokens) {
+  if (!query) return 1;
+  if (g._nameNorm === query) return 100;
+  if (g._nameNorm.startsWith(query)) return 80;
+  if (g._nameNorm.includes(query)) return 60;
+
+  let viaName = true;
+  for (const t of tokens) {
+    if (g._nameNorm.includes(t)) continue;
+    viaName = false;
+    const inOther = g._haystack.includes(t) ||
+      (t.length >= 2 && g._acronyms.some(a => a.includes(t)));
+    if (!inOther) return 0;
+  }
+  return viaName ? 40 : 20;
+}
+
+// Discord app ids are snowflakes: a bigger id means the app was registered later.
+function compareNewest(a, b) {
+  if (a._idNum === b._idNum) return a.name.localeCompare(b.name);
+  return a._idNum > b._idNum ? -1 : 1;
+}
+
+let searchMemo = { key: null, games: null, matches: [] };
+
+function searchDatabaseGames(filter, sort) {
+  const query = normalizeSearchText(filter);
+  const sortMode = sort === 'newest' ? 'newest' : 'name';
+  const key = `${sortMode}\u0000${query}`;
+  if (searchMemo.key === key && searchMemo.games === databaseCache.games) return searchMemo.matches;
+
+  const tokens = query ? query.split(' ') : [];
+  const scored = [];
+  for (const g of databaseCache.games) {
+    const score = scoreDatabaseGame(g, query, tokens);
+    if (score > 0) scored.push({ g, score });
+  }
+
+  if (sortMode === 'newest') {
+    scored.sort((a, b) => compareNewest(a.g, b.g));
+  } else if (query) {
+    // Best matches first; games Discord can detect by exe before ones it can't.
+    scored.sort((a, b) =>
+      (b.score - a.score) ||
+      (Number(a.g.usesNewDetection) - Number(b.g.usesNewDetection)) ||
+      a.g.name.localeCompare(b.g.name));
+  }
+  // name sort without a query: databaseCache.games is already alphabetical
+
+  const matches = scored.map(s => s.g);
+  searchMemo = { key, games: databaseCache.games, matches };
+  return matches;
 }
 
 async function loadDatabaseCache(gameListPath) {
@@ -105,46 +201,27 @@ async function loadDatabaseCache(gameListPath) {
   }
 }
 
-function pageDatabaseGames({ filter, offset, limit }) {
-  const term = String(filter || '').trim().toLowerCase();
+function pageDatabaseGames({ filter, offset, limit, sort }) {
   const start = Number.isFinite(offset) ? Math.max(0, offset) : 0;
   const pageSize = Number.isFinite(limit) ? Math.min(500, Math.max(1, limit)) : 200;
 
-  const items = [];
-  let matchIndex = 0;
-  let hasMore = false;
+  const matches = searchDatabaseGames(filter, sort);
 
-  const games = databaseCache.games;
-
-  for (let i = 0; i < games.length; i++) {
-    const g = games[i];
-    if (term && !g._nameLower.includes(term)) continue;
-
-    if (matchIndex >= start && items.length < pageSize) {
-      // Strip internal fields before crossing IPC boundary
-      items.push({
-        id: g.id,
-        name: g.name,
-        exe: g.exe,
-        isLauncher: g.isLauncher,
-        usesNewDetection: g.usesNewDetection // <-- SEND TO FRONTEND
-      });
-    }
-
-    matchIndex++;
-
-    // Determine whether there is at least one more match beyond this page
-    if (items.length >= pageSize && matchIndex > start + pageSize) {
-      hasMore = true;
-      break;
-    }
-  }
+  // Strip internal fields before crossing IPC boundary
+  const items = matches.slice(start, start + pageSize).map(g => ({
+    id: g.id,
+    name: g.name,
+    exe: g.exe,
+    isLauncher: g.isLauncher,
+    usesNewDetection: g.usesNewDetection // <-- SEND TO FRONTEND
+  }));
 
   return {
     items,
     offset: start,
     limit: pageSize,
-    hasMore
+    total: matches.length,
+    hasMore: start + items.length < matches.length
   };
 }
 
@@ -268,6 +345,13 @@ async function ensureFakeExeForGame(game, paths) {
   const exeFileName = path.basename(exeRelPath);
 
   const gameFolder = path.join(paths.gamesRoot, appIdFolder, exeFolderPart);
+
+  // Never write outside the games folder (e.g. an exe path containing "..").
+  const rel = path.relative(paths.gamesRoot, gameFolder);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`Invalid executable path: ${game.exe}`);
+  }
+
   ensureDirSync(gameFolder);
 
   const destExePath = path.join(gameFolder, exeFileName);
@@ -297,7 +381,38 @@ async function ensureFakeExeForGame(game, paths) {
 }
 
 let mainWindow = null;
-let runningProcesses = new Map();
+
+// Every fake game currently running, keyed by makeGameKey(). Several can run at once.
+const runningProcs = new Map();
+
+function listRunning() {
+  return Array.from(runningProcs.values()).map(r => ({
+    appId: r.appId,
+    name: r.name,
+    exe: r.exe,
+    startedAt: r.startedAt
+  }));
+}
+
+function notifyRunningChanged() {
+  mainWindow?.webContents.send('launcher/runningChanged', listRunning());
+}
+
+function stopRunning(key) {
+  const r = runningProcs.get(key);
+  if (!r) return false;
+  runningProcs.delete(key);
+  try {
+    r.proc.kill();
+  } catch {
+    // ignore
+  }
+  return true;
+}
+
+function stopAllRunning() {
+  for (const key of Array.from(runningProcs.keys())) stopRunning(key);
+}
 
 let pendingUpdateInfo = null;
 
@@ -402,6 +517,11 @@ app.whenReady().then(async () => {
   });
 });
 
+// Don't leave fake games running (and showing in Discord) after the launcher closes.
+app.on('before-quit', () => {
+  stopAllRunning();
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -422,14 +542,14 @@ ipcMain.handle('launcher/syncGameList', async () => {
   return { ...result, gameListPath: paths.gameListPath };
 });
 
-ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter, offset, limit } = {}) => {
+ipcMain.handle('launcher/getDatabaseGames', async (_evt, { filter, offset, limit, sort } = {}) => {
   const paths = getUserDataPaths();
 
   if (!databaseCache.loaded || databaseCache.gameListPath !== paths.gameListPath) {
     await loadDatabaseCache(paths.gameListPath);
   }
 
-  return pageDatabaseGames({ filter, offset, limit });
+  return pageDatabaseGames({ filter, offset, limit, sort });
 });
 
 ipcMain.handle('launcher/getMyGames', async () => {
@@ -462,10 +582,18 @@ ipcMain.handle('launcher/addGame', async (_evt, game) => {
 
   const entry = {
     appId: String(game?.id || ''),
-    name: String(game?.name || 'Game'),
-    exe: String(game?.exe || ''),
+    name: String(game?.name || 'Game').trim() || 'Game',
+    exe: String(game?.exe || '').trim() || fallbackExeNameFromTitle(game?.name),
     isFavorite: false
   };
+  if (game?.isCustom) {
+    entry.isCustom = true;
+    // Custom games have no Discord app id; give them a stable one so they get their own folder.
+    if (!entry.appId) {
+      const slug = sanitizeFolderName(entry.name).toLowerCase().replace(/\s+/g, '-').slice(0, 60) || 'game';
+      entry.appId = `custom-${slug}`;
+    }
+  }
 
   // Avoid duplicates by (appId + exe)
   const key = `${entry.appId}::${entry.exe}`;
@@ -573,65 +701,84 @@ ipcMain.handle('launcher/selectGame', async (_evt, game) => {
 });
 
 ipcMain.handle('launcher/launchGame', async (_evt, game) => {
+  const key = makeGameKey(game);
+  if (!key) return { ok: false, error: 'Invalid game.' };
+  const existing = runningProcs.get(key);
+  if (existing) {
+    return { ok: true, exePath: existing.exePath, gameKey: key, alreadyRunning: true };
+  }
+
   const paths = getUserDataPaths();
   ensureDirSync(paths.userData);
 
-  const gameKey = makeGameKey(game);
-  const existing = gameKey ? runningProcesses.get(gameKey) : null;
-  if (existing && !existing.killed && existing.exitCode === null) {
-    return { ok: true, exePath: existing.spawnargs?.[0] || '', gameKey, alreadyRunning: true };
+  let destExePath;
+  let workingDirectory;
+  try {
+    ({ destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths));
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || 'Failed to prepare executable') };
   }
 
-  const { destExePath, workingDirectory } = await ensureFakeExeForGame(game, paths);
+  // Two library entries can map to the same fake exe file; only one process per file.
+  for (const r of runningProcs.values()) {
+    if (r.exePath.toLowerCase() === destExePath.toLowerCase()) {
+      return { ok: false, error: `${r.name} is already running from the same executable.` };
+    }
+  }
 
   const displayName = String(game?.name || path.basename(destExePath));
 
-  const proc = spawn(destExePath, [displayName], {
-    cwd: workingDirectory,
-    windowsHide: false,
-    stdio: 'ignore'
-  });
-
-  runningProcesses.set(gameKey, proc);
-
-  proc.once('exit', () => {
-    runningProcesses.delete(gameKey);
-    mainWindow?.webContents.send('launcher/gameExited', {
-      gameKey,
-      appId: String(game?.appId || ''),
-      exe: String(game?.exe || ''),
-      name: String(game?.name || '')
+  let proc;
+  try {
+    proc = spawn(destExePath, [displayName], {
+      cwd: workingDirectory,
+      windowsHide: false,
+      stdio: 'ignore'
     });
-  });
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || 'Failed to start process') };
+  }
 
-  return { ok: true, exePath: destExePath, gameKey };
+  const entry = {
+    proc,
+    appId: String(game?.appId || ''),
+    name: displayName,
+    exe: String(game?.exe || ''),
+    exePath: destExePath,
+    startedAt: Date.now()
+  };
+  runningProcs.set(key, entry);
+
+  const onGone = () => {
+    // Only report if this process is still the tracked one (not already stopped by the user).
+    if (runningProcs.get(key) !== entry) return;
+    runningProcs.delete(key);
+    mainWindow?.webContents.send('launcher/gameExited', { gameKey: key, appId: entry.appId, exe: entry.exe, name: entry.name });
+    notifyRunningChanged();
+  };
+  proc.once('exit', onGone);
+  proc.once('error', onGone);
+
+  notifyRunningChanged();
+  return { ok: true, exePath: destExePath, gameKey: key };
 });
 
 ipcMain.handle('launcher/stopGame', async (_evt, game) => {
-  const requestedKey = game ? makeGameKey(game) : null;
-
-  if (!requestedKey) {
-    for (const [gameKey, proc] of [...runningProcesses.entries()]) {
-      try { proc.kill(); } catch {}
-      runningProcesses.delete(gameKey);
-    }
-    return { ok: true, stoppedAll: true };
-  }
-
-  const proc = runningProcesses.get(requestedKey);
-  if (!proc) {
-    return { ok: true, stopped: false, gameKey: requestedKey };
-  }
-
-  try {
-    proc.kill();
-  } catch {
-    // ignore
-  }
-
-  runningProcesses.delete(requestedKey);
-  return { ok: true, stopped: true, gameKey: requestedKey };
+  // No game given: keep the old behaviour of stopping everything.
+  const key = game ? makeGameKey(game) : '';
+  if (!key) stopAllRunning();
+  else stopRunning(key);
+  notifyRunningChanged();
+  return { ok: true };
 });
+
+ipcMain.handle('launcher/stopAllGames', async () => {
+  stopAllRunning();
+  notifyRunningChanged();
+  return { ok: true };
+});
+
+ipcMain.handle('launcher/getRunningGames', async () => listRunning());
 
 // ───────────────────────────────────────────────────────────
 // Updates
