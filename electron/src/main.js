@@ -422,10 +422,43 @@ ipcMain.handle('app/window/close', () => {
   mainWindow?.close();
 });
 
+// A snapshot of Discord's list can be bundled with the installer at build time
+// (resources/dummygame/gamelist.seed.json). It is only used when no local list exists yet,
+// so a first launch without internet still has games to show.
+async function seedGameListIfMissing(gameListPath) {
+  if (fs.existsSync(gameListPath)) return false;
+
+  const candidates = [];
+  if (app.isPackaged) candidates.push(path.join(process.resourcesPath, 'dummygame', 'gamelist.seed.json'));
+  candidates.push(path.resolve(app.getAppPath(), 'build-resources', 'dummygame', 'gamelist.seed.json'));
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      await fsp.copyFile(candidate, gameListPath);
+      return true;
+    } catch {
+      // try next candidate
+    }
+  }
+  return false;
+}
+
 ipcMain.handle('launcher/syncGameList', async () => {
   const paths = getUserDataPaths();
   ensureDirSync(paths.userData);
-  const result = await syncGameList(paths.gameListPath);
+  await seedGameListIfMissing(paths.gameListPath);
+
+  let result;
+  try {
+    result = await syncGameList(paths.gameListPath);
+  } catch (e) {
+    // Offline / Discord API down: keep working with the local (or bundled) list.
+    if (!fs.existsSync(paths.gameListPath)) throw e;
+    await loadDatabaseCache(paths.gameListPath);
+    return { updated: false, offline: true, gameListPath: paths.gameListPath };
+  }
+
   await loadDatabaseCache(paths.gameListPath);
   return { ...result, gameListPath: paths.gameListPath };
 });

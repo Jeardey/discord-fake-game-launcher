@@ -186,3 +186,16 @@ test('matchPopularGames matches by normalized name, only recognized games', () =
   const matched = matchPopularGames(games, ['valorant', 'Minecraft', 'Fortnite']);
   assert.deepEqual(matched.map(g => g.name), ['VALORANT']);
 });
+
+test('GTA IV matches by name and by edition-suffixed names, but not GTA V', () => {
+  const { POPULAR_GAME_NAMES } = require('../src/popular-games');
+  const mk = (id, name, exe = 'gta.exe') => ({ id, name, exe, isLauncher: false, usesNewDetection: false });
+  const games = [
+    mk('1', 'Grand Theft Auto IV'),
+    mk('2', 'Grand Theft Auto IV: Complete Edition'),
+    mk('3', 'Grand Theft Auto IVX Mod'),
+    mk('4', 'Grand Theft Auto V', 'gta5.exe')
+  ];
+  const names = matchPopularGames(games, POPULAR_GAME_NAMES).map(g => g.name).sort();
+  assert.deepEqual(names, ['Grand Theft Auto IV', 'Grand Theft Auto IV: Complete Edition', 'Grand Theft Auto V']);
+});

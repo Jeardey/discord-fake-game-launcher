@@ -54,6 +54,11 @@ jobs:
           dotnet restore ./src/DummyGame/DummyGame.csproj
           dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
 
+      - name: Bundle fresh Discord game list (public API, optional)
+        continue-on-error: true
+        run: |
+          node ./electron/scripts/sync-gamelist.js ./electron/build-resources/dummygame/gamelist.seed.json
+
       - name: Install Electron dependencies
         run: |
           cd electron

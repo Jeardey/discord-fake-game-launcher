@@ -5,7 +5,11 @@ const os = require('os');
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
 async function main() {
-  const outPath = path.resolve(__dirname, '..', 'gamelist.json');
+  // Optional first argument: output file (CI uses it to bundle a fresh seed list in the installer).
+  const outPath = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.resolve(__dirname, '..', 'gamelist.json');
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
   const res = await fetch(DISCORD_DETECTABLE_URL, {
     headers: {

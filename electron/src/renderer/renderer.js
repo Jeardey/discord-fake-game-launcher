@@ -545,7 +545,11 @@ async function refreshMyGames() {
 async function ensureDatabaseSynced() {
   try {
     const r = await launcherApi.syncGameList();
-    log(r.updated ? 'Updated gamelist.json from Discord API.' : 'gamelist.json already up-to-date.', 'log-success');
+    if (r.offline) {
+      log('Could not reach Discord; using the local game list.', 'log-danger');
+    } else {
+      log(r.updated ? 'Updated gamelist.json from Discord API.' : 'gamelist.json already up-to-date.', 'log-success');
+    }
   } catch (e) {
     log(`Could not sync gamelist.json: ${String(e.message || e)}`, 'log-danger');
   }

@@ -24,7 +24,7 @@ const POPULAR_GAME_NAMES = [
   'Euro Truck Simulator 2', 'Cities: Skylines',
 
   // RPG / MMO / action
-  'Grand Theft Auto V', 'Red Dead Redemption 2', 'Genshin Impact', 'Honkai: Star Rail',
+  'Grand Theft Auto IV', 'Grand Theft Auto IV: The Complete Edition', 'Grand Theft Auto V', 'Red Dead Redemption 2', 'Genshin Impact', 'Honkai: Star Rail',
   'Wuthering Waves', 'Zenless Zone Zero', 'World of Warcraft', 'Lost Ark', 'Path of Exile',
   'Diablo IV', 'Black Desert Online', 'FINAL FANTASY XIV', 'Guild Wars 2', 'New World',
   'Albion Online', 'Old School RuneScape', 'RuneScape', 'Warframe', 'Elden Ring',
@@ -36,6 +36,10 @@ const POPULAR_GAME_NAMES = [
   'Stellaris', 'Europa Universalis IV', 'Crusader Kings III', 'Hades', 'Hollow Knight',
   'Slay the Spire', 'Cuphead', 'Celeste', 'Undertale', 'Geometry Dash', 'Halo Infinite'
 ];
+
+// Discord names some games with extra edition text; these match any recognized game
+// whose normalized name starts with the prefix (e.g. "Grand Theft Auto IV: Complete Edition").
+const POPULAR_NAME_PREFIXES = ['Grand Theft Auto IV'];
 
 function normalizeName(name) {
   return String(name || '')
@@ -57,11 +61,15 @@ function matchPopularGames(databaseGames, names = POPULAR_GAME_NAMES) {
     if (key && !wanted.has(key)) wanted.set(key, n);
   }
 
+  const prefixes = (names === POPULAR_GAME_NAMES ? POPULAR_NAME_PREFIXES : []).map(normalizeName);
+
   const found = new Map(); // normalized name -> game
   for (const g of Array.isArray(databaseGames) ? databaseGames : []) {
     if (!isRecognizedDatabaseGame(g) || g.isLauncher) continue;
     const key = normalizeName(g.name);
-    if (!wanted.has(key) || found.has(key)) continue;
+    if (found.has(key)) continue;
+    const byPrefix = prefixes.some(p => key === p || key.startsWith(p + ' '));
+    if (!wanted.has(key) && !byPrefix) continue;
     found.set(key, g);
   }
 
@@ -70,6 +78,7 @@ function matchPopularGames(databaseGames, names = POPULAR_GAME_NAMES) {
 
 module.exports = {
   POPULAR_GAME_NAMES,
+  POPULAR_NAME_PREFIXES,
   normalizeName,
   matchPopularGames
 };
