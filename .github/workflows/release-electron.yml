@@ -111,12 +111,29 @@ jobs:
           npm version $v --no-git-tag-version
           Pop-Location
 
-      - name: Build and publish installer + latest.yml
+      # Build only (no electron-builder publishing): electron-builder would create its own
+      # draft release tagged "vX.Y.Z" instead of using the release_X.Y.Z release created above.
+      - name: Build installer
+        run: |
+          cd electron
+          npm run dist
+
+      - name: Upload installer + latest.yml to the release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd electron
-          npm run dist:publish
+          $files = @()
+          $files += Get-ChildItem electron/dist -Filter '*.exe' | ForEach-Object { $_.FullName }
+          $files += Get-ChildItem electron/dist -Filter '*.blockmap' | ForEach-Object { $_.FullName }
+          $files += (Resolve-Path electron/dist/latest.yml).Path
+          if ($files.Count -lt 3) {
+            Write-Error "Expected installer, blockmap and latest.yml in electron/dist"
+            exit 1
+          }
+          $files | ForEach-Object { Write-Host "Uploading $_" }
+          gh release upload "${{ steps.ver.outputs.tag }}" @files --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # If the build fails after the release was created from the Actions button,
       # remove the empty release and its tag so the same version can be run again.
