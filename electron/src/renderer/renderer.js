@@ -654,6 +654,210 @@ if (updateInstallBtn) {
   });
 }
 
+// ───────────────────────────────────────────────────────────
+// Popular games pack
+// ───────────────────────────────────────────────────────────
+const addPopularBtn = document.getElementById('addPopularBtn');
+if (addPopularBtn) {
+  addPopularBtn.addEventListener('click', async () => {
+    addPopularBtn.disabled = true;
+    addPopularBtn.textContent = 'Adding…';
+    try {
+      const r = await launcherApi.addPopularGames();
+      if (!r?.ok || r.matched === 0) {
+        log('No popular games matched Discord\'s list. Try restarting to sync the game list.', 'log-danger');
+        return;
+      }
+      log(`Popular pack: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      closeModal();
+      await refreshMyGames();
+    } catch (e) {
+      log(`Could not add popular games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    } finally {
+      addPopularBtn.disabled = false;
+      addPopularBtn.textContent = 'Add popular games pack';
+    }
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+// Random mode
+// ───────────────────────────────────────────────────────────
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value ?? '');
+  return div.innerHTML;
+}
+
+const randomModal = document.getElementById('randomModal');
+const openRandomModalBtn = document.getElementById('openRandomModalBtn');
+const randomBtnText = document.getElementById('randomBtnText');
+const randomCloseBtn = document.getElementById('randomCloseBtn');
+const randomMinutesInput = document.getElementById('randomMinutes');
+const randomSourceSelect = document.getElementById('randomSource');
+const randomPoolEl = document.getElementById('randomPool');
+const randomStateEl = document.getElementById('randomState');
+const randomCurrentEl = document.getElementById('randomCurrent');
+const randomCountdownEl = document.getElementById('randomCountdown');
+const randomSwitchesEl = document.getElementById('randomSwitches');
+const randomErrorRow = document.getElementById('randomErrorRow');
+const randomErrorEl = document.getElementById('randomError');
+const randomToggleBtn = document.getElementById('randomToggleBtn');
+const randomToggleText = document.getElementById('randomToggleText');
+
+let randomStatus = { active: false };
+let randomCurrentKey = '';
+let randomCountdownTimer = null;
+let randomBusy = false;
+
+function readRandomPrefs() {
+  try {
+    const minutes = Number(localStorage.getItem('randomMinutes'));
+    const source = localStorage.getItem('randomSource');
+    if (Number.isFinite(minutes) && minutes >= 1) randomMinutesInput.value = String(Math.min(1440, Math.round(minutes)));
+    if (source === 'library' || source === 'database') randomSourceSelect.value = source;
+  } catch { /* storage may be unavailable */ }
+}
+
+function saveRandomPrefs() {
+  try {
+    localStorage.setItem('randomMinutes', String(randomMinutesInput.value));
+    localStorage.setItem('randomSource', String(randomSourceSelect.value));
+  } catch { /* ignore */ }
+}
+
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function updateRandomCountdown() {
+  if (!randomStatus?.active) {
+    randomCountdownEl.textContent = '—';
+    return;
+  }
+  randomCountdownEl.textContent = randomStatus.nextSwitchAt
+    ? formatCountdown(randomStatus.nextSwitchAt - Date.now())
+    : 'switching…';
+}
+
+function renderRandomStatus() {
+  const active = Boolean(randomStatus?.active);
+
+  randomStateEl.textContent = active ? 'Running' : 'Stopped';
+  randomStateEl.style.color = active ? 'var(--success)' : 'var(--text-muted)';
+  randomCurrentEl.textContent = randomStatus?.current?.name || '—';
+  randomSwitchesEl.textContent = String(randomStatus?.switches || 0);
+
+  const issue = randomStatus?.lastError || '';
+  randomErrorRow.style.display = issue ? 'block' : 'none';
+  randomErrorEl.textContent = issue;
+
+  randomMinutesInput.disabled = active;
+  randomSourceSelect.disabled = active;
+  randomToggleBtn.classList.toggle('running', active);
+  randomToggleText.textContent = active ? 'Stop random mode' : 'Start random mode';
+
+  openRandomModalBtn.classList.toggle('active', active);
+  randomBtnText.textContent = active ? 'Random Mode · ON' : 'Random Mode';
+
+  updateRandomCountdown();
+
+  if (active && !randomCountdownTimer) {
+    randomCountdownTimer = window.setInterval(updateRandomCountdown, 1000);
+  } else if (!active && randomCountdownTimer) {
+    window.clearInterval(randomCountdownTimer);
+    randomCountdownTimer = null;
+  }
+}
+
+async function refreshRandomPoolSize() {
+  try {
+    const r = await launcherApi.getRandomPoolSize(randomSourceSelect.value);
+    randomPoolEl.textContent = `Pool: ${r?.size ?? 0} recognized game(s)`;
+  } catch {
+    randomPoolEl.textContent = 'Pool: —';
+  }
+}
+
+function applyRandomStatus(status) {
+  const previousKey = randomCurrentKey;
+  const nextKey = status?.current?.key || '';
+
+  // Keep the sidebar "running" dots in sync with what random mode launched/stopped.
+  if (previousKey && previousKey !== nextKey) runningGames.delete(previousKey);
+  if (nextKey) runningGames.add(nextKey);
+
+  if (nextKey && nextKey !== previousKey) {
+    log(`Random mode: now playing ${escapeHtml(status.current.name)}`, 'log-success');
+  } else if (randomStatus?.active && !status?.active) {
+    log('Random mode stopped.', 'log-danger');
+  }
+  if (status?.lastError && status.lastError !== randomStatus?.lastError) {
+    log(`Random mode: ${escapeHtml(status.lastError)}`, 'log-danger');
+  }
+
+  randomCurrentKey = nextKey;
+  randomStatus = status || { active: false };
+
+  renderRandomStatus();
+  renderMainList(searchInput.value);
+  syncSelectedGameLaunchState();
+}
+
+openRandomModalBtn.addEventListener('click', async () => {
+  readRandomPrefs();
+  randomModal.style.display = 'flex';
+  try {
+    randomStatus = (await launcherApi.getRandomStatus()) || { active: false };
+  } catch {
+    randomStatus = { active: false };
+  }
+  renderRandomStatus();
+  refreshRandomPoolSize();
+});
+
+randomCloseBtn.addEventListener('click', () => { randomModal.style.display = 'none'; });
+randomSourceSelect.addEventListener('change', () => { saveRandomPrefs(); refreshRandomPoolSize(); });
+randomMinutesInput.addEventListener('change', saveRandomPrefs);
+
+randomToggleBtn.addEventListener('click', async () => {
+  if (randomBusy) return;
+  randomBusy = true;
+  randomToggleBtn.disabled = true;
+
+  try {
+    if (randomStatus?.active) {
+      await launcherApi.stopRandomMode();
+    } else {
+      const minutes = Number(randomMinutesInput.value);
+      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+        log('Random mode: enter a number of minutes between 1 and 1440.', 'log-danger');
+        return;
+      }
+      saveRandomPrefs();
+      randomToggleText.textContent = 'Starting…';
+      const r = await launcherApi.startRandomMode(minutes, randomSourceSelect.value);
+      if (!r?.ok) {
+        log(`Random mode: ${escapeHtml(r?.error || 'could not start')}`, 'log-danger');
+        renderRandomStatus();
+      }
+    }
+  } catch (e) {
+    log(`Random mode error: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    renderRandomStatus();
+  } finally {
+    randomBusy = false;
+    randomToggleBtn.disabled = false;
+  }
+});
+
+if (launcherApi.onRandomChanged) {
+  launcherApi.onRandomChanged((status) => applyRandomStatus(status));
+}
+
 // Window controls
 const minBtn = document.getElementById('minBtn');
 const closeBtn = document.getElementById('closeBtn');

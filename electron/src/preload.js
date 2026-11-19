@@ -13,6 +13,17 @@ contextBridge.exposeInMainWorld('launcherApi', {
   toggleFavorite: (appId, exe) => ipcRenderer.invoke('launcher/toggleFavorite', { appId, exe }),
   deleteGame: (appId, exe) => ipcRenderer.invoke('launcher/deleteGame', { appId, exe }),
   createShortcut: (appId, exe) => ipcRenderer.invoke('launcher/createShortcut', { appId, exe }),
+  addPopularGames: () => ipcRenderer.invoke('launcher/addPopularGames'),
+
+  // Random mode
+  startRandomMode: (minutes, source) => ipcRenderer.invoke('random/start', { minutes, source }),
+  stopRandomMode: () => ipcRenderer.invoke('random/stop'),
+  getRandomStatus: () => ipcRenderer.invoke('random/status'),
+  getRandomPoolSize: (source) => ipcRenderer.invoke('random/poolSize', { source }),
+  onRandomChanged: (handler) => {
+    ipcRenderer.removeAllListeners('random/changed');
+    ipcRenderer.on('random/changed', (_evt, payload) => handler(payload));
+  },
 
   // Run
   selectGame: (game) => ipcRenderer.invoke('launcher/selectGame', game),

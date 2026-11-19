@@ -16,7 +16,8 @@
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
     "dist": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:publish": "electron-builder --win nsis --publish always"
+    "dist:publish": "electron-builder --win nsis --publish always",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "^30.0.0",

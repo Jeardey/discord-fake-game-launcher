@@ -28,6 +28,19 @@ The same executable acts as:
 - **Launcher** when run from the shortcut or from root folder.
 - **Fake game** when run from a subfolder inside `games/`.
 
+## Features (Electron UI)
+
+- Search Discord's full detectable-games list and add games to your library.
+- **Add popular games pack** (in the *Add Game* window): adds well-known titles, but only the ones Discord's list
+  recognizes with an explicit executable name. Games that are not found are skipped, nothing is duplicated.
+- **Random Mode** (sidebar button): choose how many minutes each game should run. When the time is up the current
+  fake game is stopped, the launcher waits a few seconds so Discord notices it ended, and a different random game
+  is started. Games are picked from *My library* or the *Entire Discord database*, and only games Discord
+  recognizes (explicit `.exe` in its list, no "new detection" fallbacks, no launcher-only entries) are used.
+  Games started this way from the database are cleaned up from disk when they stop.
+  Random Mode stops when you stop it or close the app.
+
+
 ## Build
 
 You need the .NET SDK (8.0+ recommended) and Node.js (for the Electron UI).

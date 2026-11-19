@@ -572,3 +572,37 @@ body {
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- Random mode --- */
+.btn-random { margin-top: 8px; }
+.btn-random.active { border-color: var(--success); color: var(--success); }
+
+.random-help { color: var(--text-muted); font-size: 13px; line-height: 1.4; margin-bottom: 14px; }
+.random-label { color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; margin: 10px 0 6px; }
+
+.random-field {
+  width: 100%;
+  background-color: var(--bg-darkest);
+  border: 1px solid transparent;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-normal);
+  outline: none;
+  font-size: 14px;
+  user-select: text;
+}
+.random-field:focus { border-color: var(--brand); }
+.random-field:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.random-pool { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+
+.random-status {
+  margin-top: 14px;
+  padding: 12px;
+  background-color: var(--bg-sidebar);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text-normal);
+}
+.random-status-label { display: inline-block; min-width: 110px; color: var(--text-muted); font-weight: 600; }

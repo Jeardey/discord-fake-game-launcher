@@ -17,6 +17,15 @@ npm run build:dummy
 npm run dev
 ```
 
+## Tests
+
+```powershell
+npm test
+```
+
+Runs the unit tests for the pure logic (random mode pool/rotation and the popular games matcher).
+
+
 ## Build an installer (Setup.exe)
 
 ```powershell
