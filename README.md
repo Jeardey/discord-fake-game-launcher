@@ -30,16 +30,63 @@ The same executable acts as:
 
 ## Features (Electron UI)
 
-- Search Discord's full detectable-games list and add games to your library.
-- **Add popular games pack** (in the *Add Game* window): adds well-known titles, but only the ones Discord's list
-  recognizes with an explicit executable name. Games that are not found are skipped, nothing is duplicated.
-- **Random Mode** (sidebar button): choose how many minutes each game should run. When the time is up the current
-  fake game is stopped, the launcher waits a few seconds so Discord notices it ended, and a different random game
-  is started. Games are picked from *My library* or the *Entire Discord database*, and only games Discord
-  recognizes (explicit `.exe` in its list, no "new detection" fallbacks, no launcher-only entries) are used.
-  Games started this way from the database are cleaned up from disk when they stop.
-  Random Mode stops when you stop it or close the app.
+- Search Discord's full list of detectable games and add them to your library.
+- Launch several fake games at the same time, favorite them, and create desktop shortcuts.
+- **Add popular games pack**: one click adds well-known titles (see below).
+- **Random Mode**: automatically rotates through random games every X minutes (see below).
+- The game list is refreshed from Discord's public API every time the app starts. If Discord cannot be
+  reached, the app keeps using the last saved list.
 
+## Random Mode
+
+Random Mode keeps one fake game running at a time and swaps it for a different random one on a timer.
+
+### How to use
+
+1. Click **Random Mode** in the left sidebar.
+2. Set **Switch game every (minutes)** (from 1 to 1440).
+3. Choose **Pick games from**:
+   - **My library**: only games you already added to your library.
+   - **Entire Discord database**: any game Discord recognizes (thousands of games).
+4. Check the **Pool** line: it shows how many games can be picked. It must be at least 1.
+5. Click **Start random mode**. A game starts right away.
+6. Click **Stop random mode** (or close the app) to end it. The current fake game is closed too.
+
+The sidebar button shows **Random Mode · ON** while it is running, and the window shows the game that is
+playing now, a countdown to the next switch and how many switches happened.
+
+### What happens on every switch
+
+1. The current fake game is stopped.
+2. The launcher waits about 5 seconds, so Discord notices the game ended.
+3. A different random game is started. The last games played are avoided so you do not get the same one
+   again and again.
+
+### Which games can be picked
+
+Only games that Discord **recognizes by their executable name** are used. These are never picked:
+
+- games Discord lists without an executable ("new detection" games, the app shows a warning for them),
+- entries that only have a launcher executable (Entire Discord database mode),
+- entries with invalid Windows file names.
+
+If a game fails to start, the launcher silently tries another one. Games picked from the Discord database
+that are not in your library are deleted from disk when they stop, so the `games` folder does not fill up.
+
+### Good to know
+
+- If you close a fake game window by hand, Random Mode picks a new game at the next switch time.
+- Games you started manually are never touched or picked by Random Mode while they are running.
+- If a Discord Quest needs a long, continuous time in **one specific game**, rotating games will not help
+  with it. Use a normal **Launch** for that game, or set a long interval.
+- Your minutes and pool choice are remembered the next time you open the window.
+
+## Add popular games pack
+
+In the **Add Game** window, click **Add popular games pack**. The launcher compares a built-in list of
+about 120 popular titles (including Grand Theft Auto IV) with Discord's list and adds the ones Discord
+recognizes with an executable name. At the time of writing about 95 of them match. Games that are
+already in your library are skipped, and the log tells you how many were added.
 
 ## Build
 
