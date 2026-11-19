@@ -67,3 +67,14 @@ dotnet build ./src/DummyGame/DummyGame.csproj -c Release
    ```
 
 The installer will be created in `electron/dist/`.
+
+## Releasing a new version
+
+1. On GitHub open **Actions** > **Release (Electron Installer)** > **Run workflow**.
+2. Type the new version (`X.Y.Z`, e.g. `0.2.0`) and run it.
+
+The workflow builds the installer, creates the `release_X.Y.Z` tag and GitHub Release, and uploads
+`Setup.exe` + `latest.yml` (used by the in-app auto-update). Each run needs a version that does not
+exist yet; if a build fails the empty release and tag are removed so you can run the same version again.
+Pushing a tag named `release_X.Y.Z` also works.
+
