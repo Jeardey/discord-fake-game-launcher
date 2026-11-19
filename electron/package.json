@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Jeardey/discord-fake-game-launcher.git"
+    "url": "https://github.com/naustagic/discord-fake-game-launcher.git"
   },
   "main": "src/main.js",
   "type": "commonjs",
@@ -53,7 +53,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "Jeardey",
+        "owner": "naustagic",
         "repo": "discord-fake-game-launcher"
       }
     ],
