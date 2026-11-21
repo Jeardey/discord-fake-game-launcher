@@ -38,7 +38,12 @@ contextBridge.exposeInMainWorld('launcherApi', {
     ipcRenderer.on('launcher/gameExited', (_evt, payload) => handler(payload));
   },
 
+  // App info
+  getAppVersion: () => ipcRenderer.invoke('app/getVersion'),
+
   // Updates
+  checkForUpdates: () => ipcRenderer.invoke('update/check'),
+  getPendingUpdate: () => ipcRenderer.invoke('update/getPending'),
   installUpdate: () => ipcRenderer.invoke('update/install'),
   remindUpdateLater: () => ipcRenderer.invoke('update/remindLater'),
   quitAndInstallUpdate: () => ipcRenderer.invoke('update/quitAndInstall'),

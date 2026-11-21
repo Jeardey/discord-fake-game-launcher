@@ -357,32 +357,39 @@ function coerceReleaseNotesToText(releaseNotes) {
   return String(releaseNotes);
 }
 
-async function maybeCheckForUpdates() {
-  // Updates only make sense in packaged builds.
-  if (!app.isPackaged) return;
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+let updaterReady = false;
+let updateDownloading = false;
+let pendingUpdatePayload = null;
+
+function setupAutoUpdater() {
+  if (updaterReady) return;
+  updaterReady = true;
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
-    // No persisted dismissal: if the user picks "remind later", the update
-    // prompt will simply reappear the next time the app starts and checks.
+    // No persisted dismissal: if the user picks "remind later", the prompt appears again
+    // the next time the app starts (or from the "Update available" badge / check button).
     pendingUpdateInfo = info;
-    const payload = {
+    pendingUpdatePayload = {
       version: String(info?.version || ''),
       releaseName: String(info?.releaseName || ''),
       releaseDate: info?.releaseDate ? String(info.releaseDate) : '',
       releaseNotes: coerceReleaseNotesToText(info?.releaseNotes)
     };
 
-    mainWindow?.webContents.send('update/available', payload);
+    mainWindow?.webContents.send('update/available', pendingUpdatePayload);
   });
 
   autoUpdater.on('update-not-available', () => {
     pendingUpdateInfo = null;
+    pendingUpdatePayload = null;
   });
 
   autoUpdater.on('error', (err) => {
+    updateDownloading = false;
     mainWindow?.webContents.send('update/error', { message: String(err?.message || err || 'Unknown error') });
   });
 
@@ -396,14 +403,38 @@ async function maybeCheckForUpdates() {
   });
 
   autoUpdater.on('update-downloaded', () => {
+    updateDownloading = false;
     mainWindow?.webContents.send('update/downloaded');
   });
+}
 
+// Looks for a newer release on GitHub. Returns { ok, available, version } (never throws).
+async function checkForUpdatesNow({ silent = false } = {}) {
+  // Updates only make sense in packaged builds.
+  if (!app.isPackaged) return { ok: false, devBuild: true, error: 'Updates are only available in packaged builds.' };
+  if (updateDownloading) return { ok: true, available: Boolean(pendingUpdatePayload), version: pendingUpdatePayload?.version || '' };
+
+  setupAutoUpdater();
   try {
-    await autoUpdater.checkForUpdates();
+    const result = await autoUpdater.checkForUpdates();
+    const available = Boolean(result?.isUpdateAvailable);
+    return { ok: true, available, version: available ? String(result?.updateInfo?.version || '') : '' };
   } catch (e) {
-    mainWindow?.webContents.send('update/error', { message: String(e?.message || e || 'Unknown error') });
+    const message = String(e?.message || e || 'Unknown error');
+    // Background checks stay quiet when the user is offline; manual checks report the problem.
+    if (!silent) mainWindow?.webContents.send('update/error', { message });
+    return { ok: false, error: message };
   }
+}
+
+async function maybeCheckForUpdates() {
+  if (!app.isPackaged) return;
+
+  await checkForUpdatesNow();
+
+  // Users who keep the app open for days still get told about new releases.
+  const timer = setInterval(() => { checkForUpdatesNow({ silent: true }); }, UPDATE_CHECK_INTERVAL_MS);
+  timer.unref?.();
 }
 
 
@@ -420,6 +451,15 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  // Links in release notes open in the default browser, never inside the app window.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file:')) event.preventDefault();
   });
 
   await mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -930,15 +970,25 @@ ipcMain.handle('update/remindLater', async () => {
   return { ok: true };
 });
 
+ipcMain.handle('app/getVersion', () => app.getVersion());
+
+ipcMain.handle('update/check', async () => checkForUpdatesNow());
+
+ipcMain.handle('update/getPending', async () => pendingUpdatePayload);
+
 ipcMain.handle('update/install', async () => {
   if (!app.isPackaged) return { ok: false, error: 'Updates are only available in packaged builds.' };
+  if (updateDownloading) return { ok: true };
 
   try {
+    setupAutoUpdater();
+    updateDownloading = true;
     await autoUpdater.downloadUpdate();
 
     // When update-downloaded fires, renderer can call quitAndInstall.
     return { ok: true };
   } catch (e) {
+    updateDownloading = false;
     return { ok: false, error: String(e?.message || e || 'Failed to download update') };
   }
 });

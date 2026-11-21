@@ -1,4 +1,23 @@
-/* global launcherApi */
+/* global launcherApi, I18N */
+
+// ───────────────────────────────────────────────────────────
+// Language (pt-BR / en / es). Saved in localStorage; falls back to the system language.
+// ───────────────────────────────────────────────────────────
+const LANGUAGE_STORAGE_KEY = 'language';
+
+function readSavedLanguage() {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (saved) return I18N.normalizeLanguage(saved);
+  } catch { /* storage may be unavailable */ }
+  return I18N.normalizeLanguage(navigator.language);
+}
+
+let currentLanguage = readSavedLanguage();
+
+function t(key, params) {
+  return I18N.translate(currentLanguage, key, params);
+}
 
 const starSvg = `<svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
@@ -54,8 +73,11 @@ let updateUiState = {
 function log(msg, type = '') {
   const div = document.createElement('div');
   div.className = `log-entry ${type}`;
-  const t = new Date().toLocaleTimeString([], { hour12: false });
-  div.innerHTML = `<span class="log-time">[${t}]</span> ${msg}`;
+  const time = new Date().toLocaleTimeString([], { hour12: false });
+  const stamp = document.createElement('span');
+  stamp.className = 'log-time';
+  stamp.textContent = `[${time}]`;
+  div.append(stamp, document.createTextNode(` ${msg}`));
   logArea.appendChild(div);
   logArea.scrollTop = logArea.scrollHeight;
 }
@@ -63,11 +85,11 @@ function log(msg, type = '') {
 function resetHeroState() {
   statusDot.style.backgroundColor = 'var(--text-muted)';
   statusDot.style.color = 'var(--text-muted)';
-  statusText.innerText = 'Ready';
+  statusText.innerText = t('status.ready');
   statusText.style.color = 'var(--text-muted)';
 
   launchBtn.classList.remove('running');
-  document.getElementById('launchBtnText').innerText = 'Launch Game';
+  document.getElementById('launchBtnText').innerText = t('btn.launch');
   document.getElementById('playIcon').style.display = 'block';
   document.getElementById('stopIcon').style.display = 'none';
 
@@ -88,11 +110,11 @@ function syncSelectedGameLaunchState() {
 
   statusDot.style.backgroundColor = 'var(--success)';
   statusDot.style.color = 'var(--success)';
-  statusText.innerText = 'Playing Now';
+  statusText.innerText = t('status.playing');
   statusText.style.color = 'var(--success)';
 
   launchBtn.classList.add('running');
-  document.getElementById('launchBtnText').innerText = 'Stop Playing';
+  document.getElementById('launchBtnText').innerText = t('btn.stop');
   document.getElementById('playIcon').style.display = 'none';
   document.getElementById('stopIcon').style.display = 'block';
 
@@ -126,8 +148,8 @@ function updateDetailsPanel() {
 
   detailAppId.textContent = selectedGame.appId || dash;
   detailExe.textContent = selectedGame.exe || dash;
-  detailFavorite.textContent = selectedGame.isFavorite ? 'Yes' : 'No';
-  detailRunning.textContent = isGameRunning(selectedGame) ? 'Yes' : 'No';
+  detailFavorite.textContent = selectedGame.isFavorite ? t('common.yes') : t('common.no');
+  detailRunning.textContent = isGameRunning(selectedGame) ? t('common.yes') : t('common.no');
 }
 
 // No background thumbnails in the public build.
@@ -266,8 +288,8 @@ function renderMainList(filter = '') {
     div.className = `game-item ${selectedGame === game ? 'active' : ''} ${game.isFavorite ? 'favorite' : ''}`;
 
     div.innerHTML = `
-      <div class="game-status-dot ${running ? 'active' : ''}" aria-label="${running ? 'Running' : 'Stopped'}"></div>
-      <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
+      <div class="game-status-dot ${running ? 'active' : ''}" aria-label="${running ? t('sidebar.running') : t('sidebar.stopped')}"></div>
+      <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(game.name)}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
 
@@ -294,7 +316,7 @@ function renderMainList(filter = '') {
   if (matched > shown) {
     const note = document.createElement('div');
     note.className = 'list-note';
-    note.textContent = `Showing ${shown} of ${matched} games. Type in the filter above to find a specific one.`;
+    note.textContent = t('sidebar.listNote', { shown, matched });
     gameListEl.appendChild(note);
   }
 }
@@ -308,8 +330,8 @@ function openGameContextMenu(game, x, y) {
   if (!game) return;
 
   contextMenuEl.innerHTML = `
-    <div class="context-menu-item" id="ctxShortcut">Create shortcut</div>
-    <div class="context-menu-item danger" id="ctxDelete">Delete from library</div>
+    <div class="context-menu-item" id="ctxShortcut">${escapeHtml(t('ctx.shortcut'))}</div>
+    <div class="context-menu-item danger" id="ctxDelete">${escapeHtml(t('ctx.delete'))}</div>
   `;
 
   const margin = 8;
@@ -339,21 +361,21 @@ function openGameContextMenu(game, x, y) {
 
   shortcutBtn.addEventListener('click', async () => {
     closeContextMenu();
-    log(`Creating shortcut for ${game.name}...`);
+    log(t('log.shortcutCreating', { name: game.name }));
 
     const r = await launcherApi.createShortcut(game.appId, game.exe);
     if (!r?.ok) {
-      log(`Shortcut failed: ${r?.error || 'unknown error'}`, 'log-danger');
+      log(t('log.shortcutFailed', { error: r?.error || t('log.unknownError') }), 'log-danger');
       return;
     }
 
-    log(`Shortcut created: ${r.path}`, 'log-success');
+    log(t('log.shortcutCreated', { path: r.path }), 'log-success');
   });
 
   deleteBtn.addEventListener('click', async () => {
     // Avoid deleting the currently running selection
       if (isGameRunning(game) && selectedGame && makeGameKey(selectedGame) === makeGameKey(game)) {
-      log('Stop the running game before deleting it.', 'log-danger');
+      log(t('log.stopBeforeDelete'), 'log-danger');
       closeContextMenu();
       return;
     }
@@ -371,7 +393,7 @@ function openGameContextMenu(game, x, y) {
       updateDetailsPanel();
     }
 
-    log(`Deleted ${game.name} from library.`, 'log-success');
+    log(t('log.deleted', { name: game.name }), 'log-success');
   });
 }
 
@@ -424,9 +446,9 @@ function showUpdateModal(payload) {
 
   updateInstallBtn.disabled = false;
   updateRemindBtn.disabled = false;
-  updateInstallBtn.textContent = 'Install update';
+  updateInstallBtn.textContent = t('update.install');
 
-  const version = payload.version ? `v${payload.version}` : 'New version';
+  const version = payload.version ? `v${payload.version}` : t('update.newVersion');
   updateSubtitle.textContent = payload.releaseName
     ? `${version} — ${payload.releaseName}`
     : version;
@@ -436,7 +458,7 @@ function showUpdateModal(payload) {
   if (updateProgressWrap) {
     updateProgressWrap.style.display = 'none';
     updateProgressFill.style.width = '0%';
-    updateProgressText.textContent = 'Downloading update…';
+    updateProgressText.textContent = t('update.downloading');
   }
 
   updateModal.style.display = 'flex';
@@ -464,9 +486,9 @@ function setUpdateProgress(percent, payload) {
   if (payload && Number.isFinite(payload.total) && payload.total > 0) {
     const speed = payload.bytesPerSecond ? ` — ${formatBytes(payload.bytesPerSecond)}/s` : '';
     updateProgressText.textContent =
-      `Downloading update… ${pct}% (${formatBytes(payload.transferred)} / ${formatBytes(payload.total)})${speed}`;
+      `${t('update.downloading')} ${pct}% (${formatBytes(payload.transferred)} / ${formatBytes(payload.total)})${speed}`;
   } else {
-    updateProgressText.textContent = `Downloading update… ${pct}%`;
+    updateProgressText.textContent = `${t('update.downloading')} ${pct}%`;
   }
 }
 
@@ -529,7 +551,7 @@ function sanitizeReleaseNotesNode(node) {
 
 function renderReleaseNotesHtml(rawNotes) {
   const text = String(rawNotes || '').trim();
-  if (!text) return '<p style="color:var(--text-muted);">No release notes provided.</p>';
+  if (!text) return `<p style="color:var(--text-muted);">${escapeHtml(t('update.noNotes'))}</p>`;
 
   // Plain text (no HTML tags) - escape and preserve line breaks.
   if (!/<[a-z!/][\s\S]*>/i.test(text)) {
@@ -606,7 +628,7 @@ async function renderNextModalPage() {
     page = await launcherApi.getDatabaseGames(modalState.filter, modalState.offset, modalState.limit);
   } catch (e) {
     modalState.loading = false;
-    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">Database not ready. Try again. (${String(e.message || e)})</div>`;
+    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">${escapeHtml(t('modal.dbNotReady', { error: String(e.message || e) }))}</div>`;
       updateDetailsPanel();
     return;
   }
@@ -622,10 +644,10 @@ async function renderNextModalPage() {
     div.className = 'modal-item';
     div.innerHTML = `
       <div class="modal-item-info">
-        <span class="modal-item-name">${game.name}</span>
-        <span class="modal-item-exe">${game.exe}</span>
+        <span class="modal-item-name">${escapeHtml(game.name)}</span>
+        <span class="modal-item-exe">${escapeHtml(game.exe)}</span>
       </div>
-      <div style="color:var(--brand); font-weight:bold; font-size:12px;">+ ADD</div>
+      <div class="modal-item-add">${escapeHtml(t('modal.add'))}</div>
     `;
 
     const modalIconEl = createIconEl({ appId: game.id, name: game.name });
@@ -637,14 +659,14 @@ async function renderNextModalPage() {
       if (game.usesNewDetection) {
         const userWantsToProceed = await promptDetectionWarning();
         if (!userWantsToProceed) {
-          log(`Cancelled adding ${game.name}.`, 'log-entry');
+          log(t('log.cancelledAdd', { name: game.name }), 'log-entry');
           return; // Abort silently
         }
       }
       // ------------------------------------------
 
       const installed = await launcherApi.addGame(game);
-      log(`Installed ${installed.name} successfully.`, 'log-success');
+      log(t('log.installed', { name: installed.name }), 'log-success');
       closeModal();
       await refreshMyGames();
       await selectGame(myGames[myGames.length - 1]);
@@ -657,7 +679,7 @@ async function renderNextModalPage() {
 
   const hasAnyRows = modalListEl.querySelector('.modal-item') != null;
   if (!hasAnyRows && modalState.offset === 0) {
-    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">No results.</div>`;
+    modalListEl.innerHTML = `<div style="padding:20px; text-align:center;">${escapeHtml(t('modal.noResults'))}</div>`;
   }
 
   modalState.hasMore = Boolean(page?.hasMore);
@@ -681,12 +703,12 @@ async function ensureDatabaseSynced() {
   try {
     const r = await launcherApi.syncGameList();
     if (r.offline) {
-      log('Could not reach Discord; using the local game list.', 'log-danger');
+      log(t('log.syncOffline'), 'log-danger');
     } else {
-      log(r.updated ? 'Updated gamelist.json from Discord API.' : 'gamelist.json already up-to-date.', 'log-success');
+      log(r.updated ? t('log.synced') : t('log.upToDate'), 'log-success');
     }
   } catch (e) {
-    log(`Could not sync gamelist.json: ${String(e.message || e)}`, 'log-danger');
+    log(t('log.syncFailed', { error: String(e.message || e) }), 'log-danger');
   }
 }
 
@@ -698,13 +720,13 @@ launchBtn.addEventListener('click', async () => {
 
   if (!currentlyRunning) {
     launchBtn.classList.add('running');
-    document.getElementById('launchBtnText').innerText = 'Stop Playing';
+    document.getElementById('launchBtnText').innerText = t('btn.stop');
     document.getElementById('playIcon').style.display = 'none';
     document.getElementById('stopIcon').style.display = 'block';
 
     statusDot.style.backgroundColor = 'var(--success)';
     statusDot.style.color = 'var(--success)';
-    statusText.innerText = 'Playing Now';
+    statusText.innerText = t('status.playing');
     statusText.style.color = 'var(--success)';
 
     const r = await launcherApi.launchGame(selectedGame);
@@ -712,9 +734,9 @@ launchBtn.addEventListener('click', async () => {
       runningGames.add(selectedKey);
       renderMainList(searchInput.value);
       syncSelectedGameLaunchState();
-      log(`Process started: ${selectedGame.exe}`, 'log-success');
+      log(t('log.started', { exe: selectedGame.exe }), 'log-success');
     } else {
-      log(`Failed to launch: ${r.error}`, 'log-danger');
+      log(t('log.launchFailed', { error: r.error || t('log.unknownError') }), 'log-danger');
       launchBtn.classList.remove('running');
       resetHeroState();
     }
@@ -723,7 +745,7 @@ launchBtn.addEventListener('click', async () => {
     runningGames.delete(selectedKey);
     renderMainList(searchInput.value);
     syncSelectedGameLaunchState();
-    log('Process terminated.', 'log-danger');
+    log(t('log.terminated'), 'log-danger');
   }
 });
 
@@ -757,18 +779,53 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('blur', () => closeContextMenu());
 
-// Update modal events
-if (updateCloseBtn) {
-  updateCloseBtn.addEventListener('click', async () => {
-    await launcherApi.remindUpdateLater();
-    hideUpdateModal();
-  });
+// ───────────────────────────────────────────────────────────
+// Updates: the user is told when a newer version is released and updates with one click.
+// ───────────────────────────────────────────────────────────
+const updateBadge = document.getElementById('updateBadge');
+const checkUpdateBtn = document.getElementById('checkUpdateBtn');
+const appVersionEl = document.getElementById('appVersion');
+
+let availableUpdate = null; // last "update available" payload from the main process
+const dismissedUpdateVersions = new Set(); // versions the user chose "remind me later" for (this run only)
+let appVersion = '';
+
+function refreshUpdateBadge() {
+  if (!updateBadge) return;
+  if (availableUpdate && !updateUiState.installing) {
+    updateBadge.textContent = t('update.badge', { version: availableUpdate.version });
+    updateBadge.style.display = 'inline-flex';
+  } else {
+    updateBadge.style.display = 'none';
+  }
 }
 
-if (updateRemindBtn) {
-  updateRemindBtn.addEventListener('click', async () => {
-    await launcherApi.remindUpdateLater();
-    hideUpdateModal();
+function handleUpdateAvailable(payload) {
+  if (!payload || !payload.version) return;
+  availableUpdate = payload;
+  refreshUpdateBadge();
+
+  // A download is already running for this update: do not reset the progress window.
+  if (updateUiState.installing) return;
+
+  log(t('update.availableLog', { version: payload.version }), 'log-success');
+  if (!dismissedUpdateVersions.has(payload.version)) showUpdateModal(payload);
+}
+
+async function dismissUpdateModal() {
+  if (updateUiState.installing) return; // keep the progress window while downloading
+  if (availableUpdate?.version) dismissedUpdateVersions.add(availableUpdate.version);
+  try { await launcherApi.remindUpdateLater(); } catch { /* ignore */ }
+  hideUpdateModal();
+  refreshUpdateBadge();
+}
+
+if (updateCloseBtn) updateCloseBtn.addEventListener('click', dismissUpdateModal);
+if (updateRemindBtn) updateRemindBtn.addEventListener('click', dismissUpdateModal);
+
+if (updateBadge) {
+  updateBadge.addEventListener('click', () => {
+    if (availableUpdate && !updateUiState.installing) showUpdateModal(availableUpdate);
   });
 }
 
@@ -778,17 +835,46 @@ if (updateInstallBtn) {
     updateUiState.installing = true;
     updateInstallBtn.disabled = true;
     updateRemindBtn.disabled = true;
-    updateInstallBtn.textContent = 'Downloading…';
+    updateInstallBtn.textContent = t('update.downloadingBtn');
     setUpdateProgress(0, null);
+    refreshUpdateBadge();
 
     const r = await launcherApi.installUpdate();
     if (!r?.ok) {
-      log(`Update failed: ${r?.error || 'unknown error'}`, 'log-danger');
+      log(t('update.failed', { error: r?.error || t('log.unknownError') }), 'log-danger');
       updateUiState.installing = false;
       updateInstallBtn.disabled = false;
       updateRemindBtn.disabled = false;
-      updateInstallBtn.textContent = 'Install update';
+      updateInstallBtn.textContent = t('update.install');
       if (updateProgressWrap) updateProgressWrap.style.display = 'none';
+      refreshUpdateBadge();
+    }
+  });
+}
+
+if (checkUpdateBtn) {
+  checkUpdateBtn.addEventListener('click', async () => {
+    if (updateUiState.installing) return;
+    checkUpdateBtn.disabled = true;
+    checkUpdateBtn.textContent = t('update.checking');
+    try {
+      const r = await launcherApi.checkForUpdates();
+      if (!r?.ok) {
+        log(r?.devBuild ? t('update.devOnly') : t('update.error', { error: r?.error || t('log.unknownError') }), 'log-danger');
+      } else if (r.available) {
+        // Asked on purpose: show the window even if "remind me later" was chosen before.
+        dismissedUpdateVersions.delete(r.version);
+        if (availableUpdate && !updateUiState.visible) showUpdateModal(availableUpdate);
+      } else {
+        availableUpdate = null;
+        refreshUpdateBadge();
+        log(t('update.upToDate'), 'log-success');
+      }
+    } catch (e) {
+      log(t('update.error', { error: String(e?.message || e) }), 'log-danger');
+    } finally {
+      checkUpdateBtn.disabled = false;
+      checkUpdateBtn.textContent = t('update.check');
     }
   });
 }
@@ -800,21 +886,21 @@ const addPopularBtn = document.getElementById('addPopularBtn');
 if (addPopularBtn) {
   addPopularBtn.addEventListener('click', async () => {
     addPopularBtn.disabled = true;
-    addPopularBtn.textContent = 'Adding…';
+    addPopularBtn.textContent = t('common.adding');
     try {
       const r = await launcherApi.addPopularGames();
       if (!r?.ok || r.matched === 0) {
-        log('No popular games matched Discord\'s list. Try restarting to sync the game list.', 'log-danger');
+        log(t('log.popularNone'), 'log-danger');
         return;
       }
-      log(`Popular pack: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      log(t('log.popularAdded', { added: r.added, skipped: r.matched - r.added }), 'log-success');
       closeModal();
       await refreshMyGames();
     } catch (e) {
-      log(`Could not add popular games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+      log(t('log.popularFailed', { error: String(e?.message || e) }), 'log-danger');
     } finally {
       addPopularBtn.disabled = false;
-      addPopularBtn.textContent = 'Add popular games pack';
+      addPopularBtn.textContent = t('modal.addPopular');
     }
   });
 }
@@ -825,29 +911,25 @@ if (addPopularBtn) {
 const addAllBtn = document.getElementById('addAllBtn');
 if (addAllBtn) {
   addAllBtn.addEventListener('click', async () => {
-    const proceed = window.confirm(
-      'Add every game Discord recognizes (thousands) to your library?\n\n' +
-      'Your current library is kept (a backup is saved as myGames.json.bak). ' +
-      'The sidebar shows the first 500 games; use the filter to find the rest.'
-    );
+    const proceed = window.confirm(t('log.allConfirm'));
     if (!proceed) return;
 
     addAllBtn.disabled = true;
-    addAllBtn.textContent = 'Adding…';
+    addAllBtn.textContent = t('common.adding');
     try {
       const r = await launcherApi.addAllGames();
       if (!r?.ok) {
-        log(`Could not add all games: ${escapeHtml(r?.error || 'unknown error')}`, 'log-danger');
+        log(t('log.allFailed', { error: r?.error || t('log.unknownError') }), 'log-danger');
         return;
       }
-      log(`All games: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      log(t('log.allAdded', { added: r.added, skipped: r.matched - r.added }), 'log-success');
       closeModal();
       await refreshMyGames();
     } catch (e) {
-      log(`Could not add all games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+      log(t('log.allFailed', { error: String(e?.message || e) }), 'log-danger');
     } finally {
       addAllBtn.disabled = false;
-      addAllBtn.textContent = 'Add ALL recognized games';
+      addAllBtn.textContent = t('modal.addAll');
     }
   });
 }
@@ -912,13 +994,13 @@ function updateRandomCountdown() {
   }
   randomCountdownEl.textContent = randomStatus.nextSwitchAt
     ? formatCountdown(randomStatus.nextSwitchAt - Date.now())
-    : 'switching…';
+    : t('random.switching');
 }
 
 function renderRandomStatus() {
   const active = Boolean(randomStatus?.active);
 
-  randomStateEl.textContent = active ? 'Running' : 'Stopped';
+  randomStateEl.textContent = active ? t('random.running') : t('random.stopped');
   randomStateEl.style.color = active ? 'var(--success)' : 'var(--text-muted)';
   randomCurrentEl.textContent = randomStatus?.current?.name || '—';
   randomSwitchesEl.textContent = String(randomStatus?.switches || 0);
@@ -930,10 +1012,10 @@ function renderRandomStatus() {
   randomMinutesInput.disabled = active;
   randomSourceSelect.disabled = active;
   randomToggleBtn.classList.toggle('running', active);
-  randomToggleText.textContent = active ? 'Stop random mode' : 'Start random mode';
+  randomToggleText.textContent = active ? t('random.stop') : t('random.start');
 
   openRandomModalBtn.classList.toggle('active', active);
-  randomBtnText.textContent = active ? 'Random Mode · ON' : 'Random Mode';
+  randomBtnText.textContent = active ? t('sidebar.randomOn') : t('sidebar.random');
 
   updateRandomCountdown();
 
@@ -948,7 +1030,7 @@ function renderRandomStatus() {
 async function refreshRandomPoolSize() {
   try {
     const r = await launcherApi.getRandomPoolSize(randomSourceSelect.value);
-    randomPoolEl.textContent = `Pool: ${r?.size ?? 0} recognized game(s)`;
+    randomPoolEl.textContent = t('random.pool', { n: r?.size ?? 0 });
   } catch {
     randomPoolEl.textContent = 'Pool: —';
   }
@@ -963,12 +1045,12 @@ function applyRandomStatus(status) {
   if (nextKey) runningGames.add(nextKey);
 
   if (nextKey && nextKey !== previousKey) {
-    log(`Random mode: now playing ${escapeHtml(status.current.name)}`, 'log-success');
+    log(t('log.randomPlaying', { name: status.current.name }), 'log-success');
   } else if (randomStatus?.active && !status?.active) {
-    log('Random mode stopped.', 'log-danger');
+    log(t('log.randomStopped'), 'log-danger');
   }
   if (status?.lastError && status.lastError !== randomStatus?.lastError) {
-    log(`Random mode: ${escapeHtml(status.lastError)}`, 'log-danger');
+    log(t('log.randomIssue', { error: status.lastError }), 'log-danger');
   }
 
   randomCurrentKey = nextKey;
@@ -1006,19 +1088,19 @@ randomToggleBtn.addEventListener('click', async () => {
     } else {
       const minutes = Number(randomMinutesInput.value);
       if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-        log('Random mode: enter a number of minutes between 1 and 1440.', 'log-danger');
+        log(t('log.randomMinutes'), 'log-danger');
         return;
       }
       saveRandomPrefs();
-      randomToggleText.textContent = 'Starting…';
+      randomToggleText.textContent = t('random.starting');
       const r = await launcherApi.startRandomMode(minutes, randomSourceSelect.value);
       if (!r?.ok) {
-        log(`Random mode: ${escapeHtml(r?.error || 'could not start')}`, 'log-danger');
+        log(t('log.randomCouldNotStart', { error: r?.error || t('log.randomCannotStart') }), 'log-danger');
         renderRandomStatus();
       }
     }
   } catch (e) {
-    log(`Random mode error: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    log(t('log.randomError', { error: String(e?.message || e) }), 'log-danger');
     renderRandomStatus();
   } finally {
     randomBusy = false;
@@ -1044,22 +1126,68 @@ launcherApi.onGameExited((payload = {}) => {
   renderMainList(searchInput.value);
   if (selectedGame && makeGameKey(selectedGame) === exitedKey) {
     syncSelectedGameLaunchState();
-    log('Process exited.', 'log-danger');
+    log(t('log.exited'), 'log-danger');
   }
   updateDetailsPanel();
 });
 
-(async function init() {
-  await ensureDatabaseSynced();
-  await refreshMyGames();
-  renderMainList('');
+// ───────────────────────────────────────────────────────────
+// Language switching
+// ───────────────────────────────────────────────────────────
+const langSelect = document.getElementById('langSelect');
 
-  // Update notifications
+function applyStaticTranslations() {
+  document.documentElement.lang = currentLanguage;
+
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+  });
+
+  if (langSelect) {
+    langSelect.setAttribute('aria-label', t('common.language'));
+    if (langSelect.parentElement) langSelect.parentElement.title = t('common.language');
+  }
+  if (appVersionEl) appVersionEl.textContent = appVersion ? t('credits.version', { version: appVersion }) : '';
+}
+
+function applyLanguage(language) {
+  currentLanguage = I18N.normalizeLanguage(language);
+  try { localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage); } catch { /* ignore */ }
+  if (langSelect) langSelect.value = currentLanguage;
+
+  applyStaticTranslations();
+
+  // Texts that depend on the current state are drawn again.
+  syncSelectedGameLaunchState();
+  renderMainList(searchInput.value);
+  renderRandomStatus();
+  refreshRandomPoolSize();
+  if (!updateUiState.installing && updateInstallBtn) updateInstallBtn.textContent = t('update.install');
+  if (checkUpdateBtn && !checkUpdateBtn.disabled) checkUpdateBtn.textContent = t('update.check');
+  refreshUpdateBadge();
+}
+
+if (langSelect) {
+  for (const lang of I18N.LANGUAGES) {
+    const option = document.createElement('option');
+    option.value = lang.code;
+    option.textContent = lang.short;
+    option.title = lang.label;
+    langSelect.appendChild(option);
+  }
+  langSelect.value = currentLanguage;
+  langSelect.addEventListener('change', () => applyLanguage(langSelect.value));
+}
+
+(async function init() {
+  applyStaticTranslations();
+
+  // Listen for update events before anything slow (the game list sync) so none is missed.
   if (launcherApi.onUpdateAvailable) {
-    launcherApi.onUpdateAvailable((payload) => {
-      showUpdateModal(payload);
-      log('Update available.', 'log-success');
-    });
+    launcherApi.onUpdateAvailable((payload) => handleUpdateAvailable(payload));
   }
   if (launcherApi.onUpdateProgress) {
     launcherApi.onUpdateProgress((payload) => {
@@ -1069,16 +1197,35 @@ launcherApi.onGameExited((payload = {}) => {
   if (launcherApi.onUpdateDownloaded) {
     launcherApi.onUpdateDownloaded(async () => {
       setUpdateProgress(100, null);
-      if (updateProgressText) updateProgressText.textContent = 'Download complete. Installing…';
-      if (updateInstallBtn) updateInstallBtn.textContent = 'Installing…';
-      log('Update downloaded. Installing…', 'log-success');
+      if (updateProgressText) updateProgressText.textContent = t('update.complete');
+      if (updateInstallBtn) updateInstallBtn.textContent = t('update.installing');
+      log(t('update.downloadedLog'), 'log-success');
       // Opens the downloaded installer and quits this app so it can run.
       await launcherApi.quitAndInstallUpdate();
     });
   }
   if (launcherApi.onUpdateError) {
     launcherApi.onUpdateError((payload) => {
-      log(`Update error: ${payload?.message || 'unknown error'}`, 'log-danger');
+      log(t('update.error', { error: payload?.message || t('log.unknownError') }), 'log-danger');
     });
+  }
+
+  if (launcherApi.getAppVersion) {
+    try {
+      appVersion = String((await launcherApi.getAppVersion()) || '');
+      applyStaticTranslations();
+    } catch { /* version is only informative */ }
+  }
+
+  await ensureDatabaseSynced();
+  await refreshMyGames();
+  renderMainList('');
+
+  // An update found while the window was still starting is asked for here.
+  if (launcherApi.getPendingUpdate) {
+    try {
+      const pending = await launcherApi.getPendingUpdate();
+      if (pending && !availableUpdate) handleUpdateAvailable(pending);
+    } catch { /* ignore */ }
   }
 })();

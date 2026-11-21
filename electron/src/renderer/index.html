@@ -8,10 +8,20 @@
 </head>
 <body>
   <div class="title-bar">
-    <div>Fake Game Launcher</div>
-    <div class="window-controls">
-      <button class="win-btn" id="minBtn" aria-label="Minimize">—</button>
-      <button class="win-btn close" id="closeBtn" aria-label="Close">✕</button>
+    <div class="title-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Fake Game Launcher</span>
+    </div>
+    <div class="title-tools">
+      <button class="update-badge" id="updateBadge" style="display:none;"></button>
+      <label class="lang-picker" title="Language">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+        <select id="langSelect" aria-label="Language"></select>
+      </label>
+      <div class="window-controls">
+        <button class="win-btn" id="minBtn" aria-label="Minimize">—</button>
+        <button class="win-btn close" id="closeBtn" aria-label="Close">✕</button>
+      </div>
     </div>
   </div>
 
@@ -20,25 +30,36 @@
       <div class="sidebar-actions">
         <div class="search-wrapper">
           <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" class="search-input" id="searchInput" placeholder="Filter library..." />
+          <input type="text" class="search-input" id="searchInput" data-i18n-placeholder="sidebar.filter" placeholder="Filter library..." />
         </div>
         <button class="btn-add-game" id="openAddModalBtn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          Add Game
+          <span data-i18n="sidebar.addGame">Add Game</span>
         </button>
         <button class="btn-add-game btn-random" id="openRandomModalBtn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="8.5" cy="8.5" r="1"></circle><circle cx="15.5" cy="15.5" r="1"></circle><circle cx="12" cy="12" r="1"></circle></svg>
-          <span id="randomBtnText">Random Mode</span>
+          <span id="randomBtnText" data-i18n="sidebar.random">Random Mode</span>
         </button>
       </div>
       <div class="game-list-container" id="gameList"></div>
+
+      <div class="sidebar-footer">
+        <div class="credits">
+          <span data-i18n="credits.developedBy">Developed by</span>
+          <strong class="credits-dev">saralapia</strong>
+        </div>
+        <div class="credits-meta">
+          <span id="appVersion"></span>
+          <button class="link-btn" id="checkUpdateBtn" data-i18n="update.check">Check for updates</button>
+        </div>
+      </div>
     </div>
 
     <div class="main-content" id="mainContent">
       <div class="hero-section">
         <div id="heroEmptyState" class="hero-empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="opacity: 0.3;"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <br />Select a game to view details.
+          <br /><span data-i18n="hero.empty">Select a game to view details.</span>
         </div>
 
         <div id="heroContent" class="hero-content">
@@ -46,7 +67,7 @@
             <div class="hero-info-left">
               <div class="status-indicator">
                 <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">Ready</span>
+                <span id="statusText" data-i18n="status.ready">Ready</span>
               </div>
               <div class="hero-title-row">
                 <span class="game-icon hero-icon" id="heroIcon" style="display:none;"></span>
@@ -59,28 +80,28 @@
               <button class="btn-main" id="launchBtn">
                 <svg id="playIcon" width="24" height="24" fill="currentColor" style="margin-right: 12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <svg id="stopIcon" width="24" height="24" fill="currentColor" style="margin-right: 12px; display: none;"><rect x="6" y="6" width="12" height="12"/></svg>
-                <span id="launchBtnText">Launch Game</span>
+                <span id="launchBtnText" data-i18n="btn.launch">Launch Game</span>
               </button>
             </div>
           </div>
 
           <div class="details-panel" id="detailsPanel">
-            <div class="details-title">Details</div>
+            <div class="details-title" data-i18n="details.title">Details</div>
             <div class="details-grid">
               <div class="details-item">
-                <div class="details-label">App ID</div>
+                <div class="details-label" data-i18n="details.appId">App ID</div>
                 <div class="details-value" id="detailAppId">—</div>
               </div>
               <div class="details-item">
-                <div class="details-label">Executable</div>
+                <div class="details-label" data-i18n="details.executable">Executable</div>
                 <div class="details-value" id="detailExe">—</div>
               </div>
               <div class="details-item">
-                <div class="details-label">Favorite</div>
+                <div class="details-label" data-i18n="details.favorite">Favorite</div>
                 <div class="details-value" id="detailFavorite">—</div>
               </div>
               <div class="details-item">
-                <div class="details-label">Running</div>
+                <div class="details-label" data-i18n="details.running">Running</div>
                 <div class="details-value" id="detailRunning">—</div>
               </div>
             </div>
@@ -91,7 +112,7 @@
 
       <div class="console-area">
         <div class="console-logs" id="logArea">
-          <div class="log-entry"><span class="log-time">[System]</span> Ready.</div>
+          <div class="log-entry"><span class="log-time">[System]</span> <span data-i18n="console.ready">Ready.</span></div>
         </div>
       </div>
     </div>
@@ -100,15 +121,15 @@
   <div class="modal-overlay" id="addGameModal">
     <div class="modal-container">
       <div class="modal-header">
-        <span>Database</span>
+        <span data-i18n="modal.database">Database</span>
         <svg style="cursor:pointer;" id="closeModalBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </div>
       <div class="modal-body">
         <div class="search-wrapper">
-          <input type="text" class="search-input" id="modalSearchInput" placeholder="Search for games..." />
+          <input type="text" class="search-input" id="modalSearchInput" data-i18n-placeholder="modal.search" placeholder="Search for games..." style="padding-left: 14px;" />
         </div>
-        <button class="btn-add-game" id="addPopularBtn" style="margin-bottom: 4px;">Add popular games pack</button>
-        <button class="btn-add-game" id="addAllBtn" style="margin-bottom: 4px;">Add ALL recognized games</button>
+        <button class="btn-add-game" id="addPopularBtn" style="margin-bottom: 4px;" data-i18n="modal.addPopular">Add popular games pack</button>
+        <button class="btn-add-game" id="addAllBtn" style="margin-bottom: 4px;" data-i18n="modal.addAll">Add ALL recognized games</button>
         <div class="modal-list" id="modalList"></div>
       </div>
     </div>
@@ -117,31 +138,31 @@
   <div class="modal-overlay" id="randomModal">
     <div class="modal-container" style="width: 520px;">
       <div class="modal-header">
-        <span>Random Game Mode</span>
+        <span data-i18n="random.title">Random Game Mode</span>
         <svg style="cursor:pointer;" id="randomCloseBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </div>
       <div class="modal-body" style="overflow-y: auto;">
-        <div class="random-help">
+        <div class="random-help" data-i18n="random.help">
           Every N minutes the current fake game is stopped and another random one is started.
           Only games Discord recognizes (explicit executable in its detectable list) are used.
         </div>
 
-        <label class="random-label" for="randomMinutes">Switch game every (minutes)</label>
+        <label class="random-label" for="randomMinutes" data-i18n="random.minutes">Switch game every (minutes)</label>
         <input type="number" class="random-field" id="randomMinutes" min="1" max="1440" step="1" value="15" />
 
-        <label class="random-label" for="randomSource">Pick games from</label>
+        <label class="random-label" for="randomSource" data-i18n="random.source">Pick games from</label>
         <select class="random-field" id="randomSource">
-          <option value="library">My library</option>
-          <option value="database">Entire Discord database</option>
+          <option value="library" data-i18n="random.library">My library</option>
+          <option value="database" data-i18n="random.database">Entire Discord database</option>
         </select>
         <div class="random-pool" id="randomPool">Pool: —</div>
 
         <div class="random-status" id="randomStatus">
-          <div><span class="random-status-label">State</span> <span id="randomState">Stopped</span></div>
-          <div><span class="random-status-label">Now playing</span> <span id="randomCurrent">—</span></div>
-          <div><span class="random-status-label">Next switch in</span> <span id="randomCountdown">—</span></div>
-          <div><span class="random-status-label">Switches</span> <span id="randomSwitches">0</span></div>
-          <div id="randomErrorRow" style="display:none;"><span class="random-status-label">Last issue</span> <span id="randomError"></span></div>
+          <div><span class="random-status-label" data-i18n="random.state">State</span> <span id="randomState">Stopped</span></div>
+          <div><span class="random-status-label" data-i18n="random.nowPlaying">Now playing</span> <span id="randomCurrent">—</span></div>
+          <div><span class="random-status-label" data-i18n="random.nextSwitch">Next switch in</span> <span id="randomCountdown">—</span></div>
+          <div><span class="random-status-label" data-i18n="random.switches">Switches</span> <span id="randomSwitches">0</span></div>
+          <div id="randomErrorRow" style="display:none;"><span class="random-status-label" data-i18n="random.lastIssue">Last issue</span> <span id="randomError"></span></div>
         </div>
 
         <button class="btn-main" id="randomToggleBtn" style="height:auto; padding:12px 18px; margin-top: 14px; width:100%; justify-content:center;">
@@ -154,7 +175,7 @@
   <div class="modal-overlay" id="updateModal">
     <div class="modal-container" style="width: 640px;">
       <div class="modal-header">
-        <span id="updateTitle">Update Available</span>
+        <span id="updateTitle" data-i18n="update.title">Update Available</span>
         <svg style="cursor:pointer;" id="updateCloseBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </div>
       <div class="modal-body">
@@ -167,8 +188,8 @@
           <div class="update-progress-text" id="updateProgressText">Downloading update…</div>
         </div>
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 12px;">
-          <button class="btn-add-game" id="updateRemindBtn" style="width:auto; padding:10px 14px;">Remind me later</button>
-          <button class="btn-main" id="updateInstallBtn" style="height:auto; padding:10px 18px;">Install update</button>
+          <button class="btn-add-game" id="updateRemindBtn" style="width:auto; padding:10px 14px;" data-i18n="update.remind">Remind me later</button>
+          <button class="btn-main" id="updateInstallBtn" style="height:auto; padding:10px 18px;" data-i18n="update.install">Update now</button>
         </div>
       </div>
     </div>
@@ -185,7 +206,7 @@
             <line x1="12" y1="9" x2="12" y2="13"></line>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
           </svg>
-          Detection System Warning
+          <span data-i18n="warn.title">Detection System Warning</span>
         </span>
         <svg style="cursor:pointer;" id="warningCloseBtn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -193,21 +214,22 @@
         </svg>
       </div>
       <div class="modal-body">
-        <div style="color: var(--text-normal); font-weight: 600; margin-bottom: 8px;">This program uses Discord's new detection mechanism.</div>
-        <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px; line-height: 1.4;">
+        <div style="color: var(--text-normal); font-weight: 600; margin-bottom: 8px;" data-i18n="warn.headline">This program uses Discord's new detection mechanism.</div>
+        <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px; line-height: 1.4;" data-i18n="warn.text1">
           Discord did not provide an explicit executable filename for this program in their database.
         </div>
-        <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px; line-height: 1.4;">
+        <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px; line-height: 1.4;" data-i18n="warn.text2">
           The launcher will use a fallback executable, but it may not work properly for tracking quests.
         </div>
         <div style="display:flex; gap:10px; justify-content:flex-end;">
-          <button class="btn-main" style="background-color: transparent; border: 1px solid var(--text-muted); color: var(--text-normal);" id="warningCancelBtn">Cancel</button>
-          <button class="btn-add-game" style="background-color: #faa61a; color: #fff; border: none;" id="warningConfirmBtn">Add Anyway</button>
+          <button class="btn-main" style="background: transparent; box-shadow: none; border: 1px solid var(--text-muted); color: var(--text-normal);" id="warningCancelBtn" data-i18n="warn.cancel">Cancel</button>
+          <button class="btn-add-game" style="background-color: #faa61a; color: #fff; border: none; width: auto; padding: 10px 16px;" id="warningConfirmBtn" data-i18n="warn.confirm">Add Anyway</button>
         </div>
       </div>
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

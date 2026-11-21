@@ -2,6 +2,8 @@
   "name": "discord-fake-game-launcher-ui",
   "private": true,
   "version": "0.1.0",
+  "description": "Discord Fake Game Launcher - fake game processes for Discord (pt-BR, en, es)",
+  "author": "saralapia",
   "repository": {
     "type": "git",
     "url": "https://github.com/naustagic/discord-fake-game-launcher.git"
