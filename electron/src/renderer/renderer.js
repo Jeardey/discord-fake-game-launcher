@@ -132,17 +132,134 @@ function updateDetailsPanel() {
 
 // No background thumbnails in the public build.
 
+// ───────────────────────────────────────────────────────────
+// Game icons: small images from Discord's CDN, loaded only for rows that are on screen.
+// Nothing is saved to disk; while loading (or when a game has no icon) its first letter is shown.
+// ───────────────────────────────────────────────────────────
+const iconUrlCache = new Map(); // appId -> url (only successful lookups are remembered)
+
+function iconLetter(name) {
+  const ch = String(name || '?').trim().charAt(0);
+  return ch ? ch.toUpperCase() : '?';
+}
+
+function applyIconImage(el, url) {
+  if (!el || !url) return;
+  const forAppId = el.dataset.appid;
+  const img = new Image();
+  img.alt = '';
+  img.decoding = 'async';
+  // Swap the letter for the image only once it really loaded, so a broken link never shows.
+  img.onload = () => {
+    if (el.dataset.appid !== forAppId) return; // element was reused for another game meanwhile
+    el.textContent = '';
+    el.appendChild(img);
+  };
+  img.src = url;
+}
+
+function createIconEl(game) {
+  const el = document.createElement('span');
+  el.className = 'game-icon';
+  el.dataset.appid = String(game?.appId ?? game?.id ?? '');
+  el.textContent = iconLetter(game?.name);
+
+  const cached = iconUrlCache.get(el.dataset.appid);
+  if (cached) applyIconImage(el, cached);
+  return el;
+}
+
+async function requestIcon(el) {
+  const appId = el?.dataset?.appid;
+  if (!appId || el.dataset.iconState === 'loading' || el.dataset.iconState === 'done') return;
+
+  const cached = iconUrlCache.get(appId);
+  if (cached) {
+    el.dataset.iconState = 'done';
+    applyIconImage(el, cached);
+    return;
+  }
+
+  if (!launcherApi.getGameIcon) return;
+
+  el.dataset.iconState = 'loading';
+  let url = '';
+  try {
+    const r = await launcherApi.getGameIcon(appId);
+    url = r?.url || '';
+  } catch {
+    url = '';
+  }
+
+  if (el.dataset.appid !== appId) return; // reused for another game meanwhile
+  if (url) {
+    iconUrlCache.set(appId, url);
+    el.dataset.iconState = 'done';
+    applyIconImage(el, url);
+  } else {
+    delete el.dataset.iconState; // no icon (or temporary failure): ask again next time it is shown
+  }
+}
+
+function createIconObserver(rootEl) {
+  if (typeof IntersectionObserver === 'undefined') return null;
+  return new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      observer.unobserve(entry.target);
+      requestIcon(entry.target);
+    }
+  }, { root: rootEl, rootMargin: '120px' });
+}
+
+function watchIcon(observer, el) {
+  if (!el || el.querySelector('img')) return;
+  if (observer) observer.observe(el);
+  else requestIcon(el);
+}
+
+let sidebarIconObserver = null;
+let modalIconObserver = null;
+
+function setHeroIcon(game) {
+  const heroIconEl = document.getElementById('heroIcon');
+  if (!heroIconEl) return;
+
+  heroIconEl.textContent = iconLetter(game?.name);
+  heroIconEl.dataset.appid = String(game?.appId ?? '');
+  delete heroIconEl.dataset.iconState;
+  heroIconEl.style.display = 'inline-flex';
+
+  const cached = iconUrlCache.get(heroIconEl.dataset.appid);
+  if (cached) applyIconImage(heroIconEl, cached);
+  else requestIcon(heroIconEl);
+}
+
+// The library can hold thousands of games (see "Add ALL recognized games"); drawing every row
+// at once would make the sidebar sluggish, so only the first rows that match are drawn.
+const MAIN_LIST_LIMIT = 500;
+const nameCollator = new Intl.Collator();
+
 function renderMainList(filter = '') {
   gameListEl.innerHTML = '';
 
+  if (sidebarIconObserver) sidebarIconObserver.disconnect();
+  sidebarIconObserver = createIconObserver(gameListEl);
+
   const sortedGames = [...myGames].sort((a, b) => {
-    if (a.isFavorite === b.isFavorite) return a.name.localeCompare(b.name);
+    if (a.isFavorite === b.isFavorite) return nameCollator.compare(a.name, b.name);
     return a.isFavorite ? -1 : 1;
   });
 
   const term = filter.toLowerCase();
+  let matched = 0;
+  let shown = 0;
   for (const game of sortedGames) {
     if (!game.name.toLowerCase().includes(term)) continue;
+
+    matched += 1;
+    if (shown >= MAIN_LIST_LIMIT) continue;
+    shown += 1;
 
     const div = document.createElement('div');
     const running = isGameRunning(game);
@@ -153,6 +270,10 @@ function renderMainList(filter = '') {
       <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
+
+    const iconEl = createIconEl(game);
+    div.insertBefore(iconEl, div.children[1]);
+    watchIcon(sidebarIconObserver, iconEl);
 
     div.addEventListener('click', async (e) => {
       if (e.target.closest('.fav-icon')) {
@@ -168,6 +289,13 @@ function renderMainList(filter = '') {
     });
 
     gameListEl.appendChild(div);
+  }
+
+  if (matched > shown) {
+    const note = document.createElement('div');
+    note.className = 'list-note';
+    note.textContent = `Showing ${shown} of ${matched} games. Type in the filter above to find a specific one.`;
+    gameListEl.appendChild(note);
   }
 }
 
@@ -268,6 +396,7 @@ async function selectGame(game) {
 
   document.getElementById('heroTitle').innerText = game.name;
   document.getElementById('heroExe').innerText = game.exe;
+  setHeroIcon(game);
 
   updateDetailsPanel();
 
@@ -436,6 +565,8 @@ function resetAndRenderModal(filter) {
     loading: false
   };
   modalListEl.innerHTML = '';
+  if (modalIconObserver) modalIconObserver.disconnect();
+  modalIconObserver = createIconObserver(modalListEl);
   renderNextModalPage();
 }
 
@@ -496,6 +627,10 @@ async function renderNextModalPage() {
       </div>
       <div style="color:var(--brand); font-weight:bold; font-size:12px;">+ ADD</div>
     `;
+
+    const modalIconEl = createIconEl({ appId: game.id, name: game.name });
+    div.insertBefore(modalIconEl, div.firstChild);
+    watchIcon(modalIconObserver, modalIconEl);
 
     div.onclick = async () => {
       // --- CHECK DETECTION FLAG BEFORE ADDING ---
@@ -680,6 +815,39 @@ if (addPopularBtn) {
     } finally {
       addPopularBtn.disabled = false;
       addPopularBtn.textContent = 'Add popular games pack';
+    }
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+// Add ALL recognized games
+// ───────────────────────────────────────────────────────────
+const addAllBtn = document.getElementById('addAllBtn');
+if (addAllBtn) {
+  addAllBtn.addEventListener('click', async () => {
+    const proceed = window.confirm(
+      'Add every game Discord recognizes (thousands) to your library?\n\n' +
+      'Your current library is kept (a backup is saved as myGames.json.bak). ' +
+      'The sidebar shows the first 500 games; use the filter to find the rest.'
+    );
+    if (!proceed) return;
+
+    addAllBtn.disabled = true;
+    addAllBtn.textContent = 'Adding…';
+    try {
+      const r = await launcherApi.addAllGames();
+      if (!r?.ok) {
+        log(`Could not add all games: ${escapeHtml(r?.error || 'unknown error')}`, 'log-danger');
+        return;
+      }
+      log(`All games: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      closeModal();
+      await refreshMyGames();
+    } catch (e) {
+      log(`Could not add all games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    } finally {
+      addAllBtn.disabled = false;
+      addAllBtn.textContent = 'Add ALL recognized games';
     }
   });
 }

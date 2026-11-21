@@ -48,7 +48,10 @@
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">Ready</span>
               </div>
-              <h1 class="game-hero-title" id="heroTitle">Game Name</h1>
+              <div class="hero-title-row">
+                <span class="game-icon hero-icon" id="heroIcon" style="display:none;"></span>
+                <h1 class="game-hero-title" id="heroTitle">Game Name</h1>
+              </div>
               <div class="game-hero-subtitle" id="heroExe">process_name.exe</div>
             </div>
 
@@ -105,6 +108,7 @@
           <input type="text" class="search-input" id="modalSearchInput" placeholder="Search for games..." />
         </div>
         <button class="btn-add-game" id="addPopularBtn" style="margin-bottom: 4px;">Add popular games pack</button>
+        <button class="btn-add-game" id="addAllBtn" style="margin-bottom: 4px;">Add ALL recognized games</button>
         <div class="modal-list" id="modalList"></div>
       </div>
     </div>

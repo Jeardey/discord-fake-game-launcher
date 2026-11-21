@@ -84,9 +84,31 @@ that are not in your library are deleted from disk when they stop, so the `games
 ## Add popular games pack
 
 In the **Add Game** window, click **Add popular games pack**. The launcher compares a built-in list of
-about 120 popular titles (including Grand Theft Auto IV) with Discord's list and adds the ones Discord
+about 105 popular titles (including Grand Theft Auto IV) with Discord's list and adds the ones Discord
 recognizes with an executable name. At the time of writing about 95 of them match. Games that are
 already in your library are skipped, and the log tells you how many were added.
+
+## Add ALL recognized games
+
+In the **Add Game** window, click **Add ALL recognized games** to put every game Discord recognizes
+(thousands, the same set Random Mode uses for "Entire Discord database") into your library. Games already
+in your library are kept as they are (favorites included) and a backup is saved next to it as
+`myGames.json.bak`. The sidebar draws the first 500 games that match; type in the **Filter library** box to
+find any other one.
+
+## Game icons
+
+Games show their Discord icon in the sidebar, in the details header and in the Add Game window. Icons are
+loaded from Discord's CDN only for the games that are on screen and are kept in memory only, nothing is
+saved to disk. If a game has no icon (or you are offline) its first letter is shown instead.
+
+## Fake game window
+
+Fake games now run without a visible window (the process is still running, so Discord detects it the same
+way). To stop a game, use the **Stop** button or Random Mode. Fake games created by an older version are
+updated the next time you launch them. If you want the small "fake process" window back, set the
+environment variable `FAKEGAME_SHOW_WINDOW=1` before starting the app. Desktop shortcuts keep opening the
+visible window.
 
 ## Build
 

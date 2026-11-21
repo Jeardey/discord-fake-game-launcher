@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('launcherApi', {
   deleteGame: (appId, exe) => ipcRenderer.invoke('launcher/deleteGame', { appId, exe }),
   createShortcut: (appId, exe) => ipcRenderer.invoke('launcher/createShortcut', { appId, exe }),
   addPopularGames: () => ipcRenderer.invoke('launcher/addPopularGames'),
+  addAllGames: () => ipcRenderer.invoke('launcher/addAllGames'),
+  getGameIcon: (appId) => ipcRenderer.invoke('launcher/getGameIcon', { appId }),
 
   // Random mode
   startRandomMode: (minutes, source) => ipcRenderer.invoke('random/start', { minutes, source }),

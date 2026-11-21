@@ -8,14 +8,21 @@ const { spawn } = require('child_process');
 const { makeGameKey } = require('./launcher-state');
 const { buildPool, createRandomController } = require('./random-mode');
 const { matchPopularGames } = require('./popular-games');
+const { mergeGamesIntoLibrary, isStaleCopy } = require('./library');
+const { createIconResolver } = require('./game-icons');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
+
+// Fake game processes run without a visible window by default. Set FAKEGAME_SHOW_WINDOW=1
+// (environment variable) to bring the little "fake process" window back.
+const HIDE_FAKE_WINDOWS = process.env.FAKEGAME_SHOW_WINDOW !== '1';
 
 // In-memory cache to avoid re-reading/parsing large gamelist.json on every search.
 let databaseCache = {
   loaded: false,
   gameListPath: null,
-  games: []
+  games: [],
+  iconById: new Map() // appId -> icon hash, only for entries where Discord's list includes one
 };
 
 function ensureDirSync(dirPath) {
@@ -103,10 +110,19 @@ async function loadDatabaseCache(gameListPath) {
   try {
     const detectableApps = await readJsonIfExists(gameListPath, []);
     const games = toDatabaseGames(detectableApps);
+
+    const iconById = new Map();
+    for (const appEntry of Array.isArray(detectableApps) ? detectableApps : []) {
+      if (appEntry?.id && typeof appEntry.icon === 'string' && appEntry.icon) {
+        iconById.set(String(appEntry.id), appEntry.icon);
+      }
+    }
+
     databaseCache = {
       loaded: true,
       gameListPath,
-      games
+      games,
+      iconById
     };
   } catch {
     // Keep old cache if parsing fails
@@ -280,24 +296,36 @@ async function ensureFakeExeForGame(game, paths) {
 
   const destExePath = path.join(gameFolder, exeFileName);
 
+  const sourceDir = path.dirname(dummySourceExe);
+  const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
+
   if (!fs.existsSync(destExePath)) {
     // Copy main exe but rename to target exe file name
     await fsp.copyFile(dummySourceExe, destExePath);
+  }
 
-    // Copy sidecar files DummyGame.* from source dir
-    const sourceDir = path.dirname(dummySourceExe);
-    const dummyBase = path.basename(dummySourceExe, path.extname(dummySourceExe));
+  // Sidecar files DummyGame.* (dll, runtimeconfig, deps...). Missing ones are copied exactly as
+  // before. Ones that already exist are refreshed only when the bundled template changed
+  // (so fake games created by an older version pick up new DummyGame behaviour). A file that is
+  // in use (game running) is simply left alone and refreshed on the next launch.
+  const sidecars = await fsp.readdir(sourceDir);
+  for (const fileName of sidecars) {
+    if (!fileName.toLowerCase().startsWith(dummyBase.toLowerCase() + '.')) continue;
+    if (fileName.toLowerCase() === path.basename(dummySourceExe).toLowerCase()) continue;
 
-    const sidecars = await fsp.readdir(sourceDir);
-    for (const fileName of sidecars) {
-      if (!fileName.toLowerCase().startsWith(dummyBase.toLowerCase() + '.')) continue;
-      if (fileName.toLowerCase() === path.basename(dummySourceExe).toLowerCase()) continue;
+    const src = path.join(sourceDir, fileName);
+    const dest = path.join(gameFolder, fileName);
 
-      const src = path.join(sourceDir, fileName);
-      const dest = path.join(gameFolder, fileName);
-      if (!fs.existsSync(dest)) {
-        await fsp.copyFile(src, dest);
-      }
+    if (!fs.existsSync(dest)) {
+      await fsp.copyFile(src, dest);
+      continue;
+    }
+
+    try {
+      const [srcStat, destStat] = await Promise.all([fsp.stat(src), fsp.stat(dest)]);
+      if (isStaleCopy(srcStat, destStat)) await fsp.copyFile(src, dest);
+    } catch {
+      // Locked or unreadable: keep the existing copy.
     }
   }
 
@@ -637,7 +665,10 @@ async function launchFakeGame(game) {
 
   const displayName = String(game?.name || path.basename(destExePath));
 
-  const proc = spawn(destExePath, [displayName], {
+  // "--hidden" is understood by the current DummyGame build; older builds just ignore it.
+  const spawnArgs = HIDE_FAKE_WINDOWS ? [displayName, '--hidden'] : [displayName];
+
+  const proc = spawn(destExePath, spawnArgs, {
     cwd: workingDirectory,
     windowsHide: false,
     stdio: 'ignore'
@@ -798,6 +829,69 @@ ipcMain.handle('launcher/addPopularGames', async () => {
   if (added.length) await writeJson(paths.myGamesPath, safeList);
 
   return { ok: true, matched: matches.length, added: added.length, names: added };
+});
+
+// ───────────────────────────────────────────────────────────
+// Add every game Discord recognizes (same rules as the random mode "database" pool)
+// ───────────────────────────────────────────────────────────
+ipcMain.handle('launcher/addAllGames', async () => {
+  const paths = getUserDataPaths();
+  ensureDirSync(paths.userData);
+  await ensureDatabaseLoaded();
+
+  const pool = buildPool({ source: 'database', library: [], databaseGames: databaseCache.games });
+  if (pool.length === 0) {
+    return { ok: false, error: 'No recognized games found in the Discord database. Try restarting to sync the game list.' };
+  }
+
+  const myGames = await readJsonIfExists(paths.myGamesPath, []);
+  const { list, added } = mergeGamesIntoLibrary(
+    myGames,
+    pool.map(p => ({ id: p.appId, name: p.name, exe: p.exe }))
+  );
+
+  // Keep a copy of the previous library, just in case.
+  if (added > 0) {
+    try { await fsp.copyFile(paths.myGamesPath, paths.myGamesPath + '.bak'); } catch { /* no previous file */ }
+    await writeJson(paths.myGamesPath, list);
+  }
+
+  return { ok: true, matched: pool.length, added };
+});
+
+// ───────────────────────────────────────────────────────────
+// Game icons (Discord CDN, memory cache only)
+// ───────────────────────────────────────────────────────────
+async function fetchJsonWithTimeout(url) {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'DiscordFakeGameLauncherUI/0.1.0',
+      'Accept': 'application/json'
+    },
+    signal: AbortSignal.timeout(8000)
+  });
+
+  let json = null;
+  if (res.ok) {
+    try { json = await res.json(); } catch { json = null; }
+  }
+  return { status: res.status, json };
+}
+
+const iconResolver = createIconResolver({
+  getKnownHash: (appId) => databaseCache.iconById.get(String(appId)) || '',
+  fetchJson: fetchJsonWithTimeout,
+  concurrency: 4
+});
+
+// Returns the icon url for one game, or '' when it has none (the UI then shows a letter).
+ipcMain.handle('launcher/getGameIcon', async (_evt, { appId } = {}) => {
+  try {
+    await ensureDatabaseLoaded();
+  } catch {
+    // Icons are optional: keep going without the local list.
+  }
+  return { url: await iconResolver.resolve(appId) };
 });
 
 ipcMain.handle('launcher/stopGame', async (_evt, game) => {
