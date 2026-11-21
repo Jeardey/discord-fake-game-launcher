@@ -1,6 +1,15 @@
 name: Release (Electron Installer)
 
+# Two ways to publish a new version:
+#   1) Actions tab > "Release (Electron Installer)" > Run workflow > type the version (e.g. 0.2.0)
+#   2) Push a tag named release_X.Y.Z
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version number (X.Y.Z), e.g. 0.2.0'
+        required: true
+        type: string
   push:
     tags:
       - 'release_*'
@@ -26,24 +35,49 @@ jobs:
         with:
           node-version: '20.x'
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: ver
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          if ($tag -match '^release_(\d+\.\d+\.\d+)$') {
-            $version = $Matches[1]
-            "version=$version" >> $env:GITHUB_OUTPUT
-            Write-Host "Version: $version"
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $version = $env:INPUT_VERSION.Trim().TrimStart('v')
           } else {
-            Write-Error "Tag '$tag' does not match release_X.Y.Z"
+            if ($env:REF_NAME -notmatch '^release_(\d+\.\d+\.\d+)$') {
+              Write-Error "Tag '$($env:REF_NAME)' does not match release_X.Y.Z"
+              exit 1
+            }
+            $version = $Matches[1]
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Version '$version' must look like X.Y.Z (e.g. 0.2.0)"
             exit 1
           }
 
+          $tag = "release_$version"
+
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "A release for $tag already exists. Pick a new version number."
+            exit 1
+          }
+          $global:LASTEXITCODE = 0
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version (tag $tag)"
+
       - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: Discord Fake Game Launcher ${{ steps.ver.outputs.version }}
           generate_release_notes: true
           draft: false
@@ -54,10 +88,20 @@ jobs:
           dotnet restore ./src/DummyGame/DummyGame.csproj
           dotnet publish ./src/DummyGame/DummyGame.csproj -c Release -o ./electron/build-resources/dummygame --no-restore
 
+      - name: Bundle fresh Discord game list (public API, optional)
+        continue-on-error: true
+        run: |
+          node ./electron/scripts/sync-gamelist.js ./electron/build-resources/dummygame/gamelist.seed.json
+
       - name: Install Electron dependencies
         run: |
           cd electron
           npm install --no-audit --no-fund
+
+      - name: Run unit tests
+        run: |
+          cd electron
+          npm test
 
       - name: Set Electron app version
         shell: pwsh
@@ -67,9 +111,35 @@ jobs:
           npm version $v --no-git-tag-version
           Pop-Location
 
-      - name: Build and publish installer + latest.yml
+      # Build only (no electron-builder publishing): electron-builder would create its own
+      # draft release tagged "vX.Y.Z" instead of using the release_X.Y.Z release created above.
+      - name: Build installer
+        run: |
+          cd electron
+          npm run dist
+
+      - name: Upload installer + latest.yml to the release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd electron
-          npm run dist:publish
+          $files = @()
+          $files += Get-ChildItem electron/dist -Filter '*.exe' | ForEach-Object { $_.FullName }
+          $files += Get-ChildItem electron/dist -Filter '*.blockmap' | ForEach-Object { $_.FullName }
+          $files += (Resolve-Path electron/dist/latest.yml).Path
+          if ($files.Count -lt 3) {
+            Write-Error "Expected installer, blockmap and latest.yml in electron/dist"
+            exit 1
+          }
+          $files | ForEach-Object { Write-Host "Uploading $_" }
+          gh release upload "${{ steps.ver.outputs.tag }}" @files --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # If the build fails after the release was created from the Actions button,
+      # remove the empty release and its tag so the same version can be run again.
+      - name: Clean up failed release
+        if: failure() && github.event_name == 'workflow_dispatch' && steps.create_release.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "${{ steps.ver.outputs.tag }}" --repo "${{ github.repository }}" --yes --cleanup-tag

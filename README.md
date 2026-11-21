@@ -28,6 +28,88 @@ The same executable acts as:
 - **Launcher** when run from the shortcut or from root folder.
 - **Fake game** when run from a subfolder inside `games/`.
 
+## Features (Electron UI)
+
+- Search Discord's full list of detectable games and add them to your library.
+- Launch several fake games at the same time, favorite them, and create desktop shortcuts.
+- **Add popular games pack**: one click adds well-known titles (see below).
+- **Random Mode**: automatically rotates through random games every X minutes (see below).
+- The game list is refreshed from Discord's public API every time the app starts. If Discord cannot be
+  reached, the app keeps using the last saved list.
+
+## Random Mode
+
+Random Mode keeps one fake game running at a time and swaps it for a different random one on a timer.
+
+### How to use
+
+1. Click **Random Mode** in the left sidebar.
+2. Set **Switch game every (minutes)** (from 1 to 1440).
+3. Choose **Pick games from**:
+   - **My library**: only games you already added to your library.
+   - **Entire Discord database**: any game Discord recognizes (thousands of games).
+4. Check the **Pool** line: it shows how many games can be picked. It must be at least 1.
+5. Click **Start random mode**. A game starts right away.
+6. Click **Stop random mode** (or close the app) to end it. The current fake game is closed too.
+
+The sidebar button shows **Random Mode · ON** while it is running, and the window shows the game that is
+playing now, a countdown to the next switch and how many switches happened.
+
+### What happens on every switch
+
+1. The current fake game is stopped.
+2. The launcher waits about 5 seconds, so Discord notices the game ended.
+3. A different random game is started. The last games played are avoided so you do not get the same one
+   again and again.
+
+### Which games can be picked
+
+Only games that Discord **recognizes by their executable name** are used. These are never picked:
+
+- games Discord lists without an executable ("new detection" games, the app shows a warning for them),
+- entries that only have a launcher executable (Entire Discord database mode),
+- entries with invalid Windows file names.
+
+If a game fails to start, the launcher silently tries another one. Games picked from the Discord database
+that are not in your library are deleted from disk when they stop, so the `games` folder does not fill up.
+
+### Good to know
+
+- If you close a fake game window by hand, Random Mode picks a new game at the next switch time.
+- Games you started manually are never touched or picked by Random Mode while they are running.
+- If a Discord Quest needs a long, continuous time in **one specific game**, rotating games will not help
+  with it. Use a normal **Launch** for that game, or set a long interval.
+- Your minutes and pool choice are remembered the next time you open the window.
+
+## Add popular games pack
+
+In the **Add Game** window, click **Add popular games pack**. The launcher compares a built-in list of
+about 105 popular titles (including Grand Theft Auto IV) with Discord's list and adds the ones Discord
+recognizes with an executable name. At the time of writing about 95 of them match. Games that are
+already in your library are skipped, and the log tells you how many were added.
+
+## Add ALL recognized games
+
+In the **Add Game** window, click **Add ALL recognized games** to put every game Discord recognizes
+(thousands, the same set Random Mode uses for "Entire Discord database") into your library. Games already
+in your library are kept as they are (favorites included) and a backup is saved next to it as
+`myGames.json.bak`. The sidebar draws the first 500 games that match; type in the **Filter library** box to
+find any other one.
+
+## Game icons
+
+Games show their Discord icon in the sidebar, in the details header and in the Add Game window. Icons are
+loaded from Discord's CDN only for the games that are on screen and are kept in memory only, nothing is
+saved to disk. If a game has no icon (or you are offline) its first letter is shown instead.
+
+## Fake game window
+
+Fake games now run without a visible window (the process is still running, so Discord detects it the same
+way). To stop a game, use the **Stop** button or Random Mode. Fake games created by an older version are
+updated the next time you launch them. If you want the small "fake process" window back, set the
+environment variable `FAKEGAME_SHOW_WINDOW=1` before starting the app. Desktop shortcuts keep opening the
+visible window.
+
 ## Build
 
 You need the .NET SDK (8.0+ recommended) and Node.js (for the Electron UI).
@@ -54,3 +136,14 @@ dotnet build ./src/DummyGame/DummyGame.csproj -c Release
    ```
 
 The installer will be created in `electron/dist/`.
+
+## Releasing a new version
+
+1. On GitHub open **Actions** > **Release (Electron Installer)** > **Run workflow**.
+2. Type the new version (`X.Y.Z`, e.g. `0.2.0`) and run it.
+
+The workflow builds the installer, creates the `release_X.Y.Z` tag and GitHub Release, and uploads
+`Setup.exe` + `latest.yml` (used by the in-app auto-update). Each run needs a version that does not
+exist yet; if a build fails the empty release and tag are removed so you can run the same version again.
+Pushing a tag named `release_X.Y.Z` also works.
+

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Jeardey/discord-fake-game-launcher.git"
+    "url": "https://github.com/naustagic/discord-fake-game-launcher.git"
   },
   "main": "src/main.js",
   "type": "commonjs",
@@ -16,7 +16,8 @@
     "build:launcher": "dotnet build ../src/Launcher/Launcher.csproj -c Release",
     "dist": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "dist:publish": "electron-builder --win nsis --publish always"
+    "dist:publish": "electron-builder --win nsis --publish always",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -52,7 +53,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "Jeardey",
+        "owner": "naustagic",
         "repo": "discord-fake-game-launcher"
       }
     ],

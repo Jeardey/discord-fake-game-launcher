@@ -132,17 +132,134 @@ function updateDetailsPanel() {
 
 // No background thumbnails in the public build.
 
+// ───────────────────────────────────────────────────────────
+// Game icons: small images from Discord's CDN, loaded only for rows that are on screen.
+// Nothing is saved to disk; while loading (or when a game has no icon) its first letter is shown.
+// ───────────────────────────────────────────────────────────
+const iconUrlCache = new Map(); // appId -> url (only successful lookups are remembered)
+
+function iconLetter(name) {
+  const ch = String(name || '?').trim().charAt(0);
+  return ch ? ch.toUpperCase() : '?';
+}
+
+function applyIconImage(el, url) {
+  if (!el || !url) return;
+  const forAppId = el.dataset.appid;
+  const img = new Image();
+  img.alt = '';
+  img.decoding = 'async';
+  // Swap the letter for the image only once it really loaded, so a broken link never shows.
+  img.onload = () => {
+    if (el.dataset.appid !== forAppId) return; // element was reused for another game meanwhile
+    el.textContent = '';
+    el.appendChild(img);
+  };
+  img.src = url;
+}
+
+function createIconEl(game) {
+  const el = document.createElement('span');
+  el.className = 'game-icon';
+  el.dataset.appid = String(game?.appId ?? game?.id ?? '');
+  el.textContent = iconLetter(game?.name);
+
+  const cached = iconUrlCache.get(el.dataset.appid);
+  if (cached) applyIconImage(el, cached);
+  return el;
+}
+
+async function requestIcon(el) {
+  const appId = el?.dataset?.appid;
+  if (!appId || el.dataset.iconState === 'loading' || el.dataset.iconState === 'done') return;
+
+  const cached = iconUrlCache.get(appId);
+  if (cached) {
+    el.dataset.iconState = 'done';
+    applyIconImage(el, cached);
+    return;
+  }
+
+  if (!launcherApi.getGameIcon) return;
+
+  el.dataset.iconState = 'loading';
+  let url = '';
+  try {
+    const r = await launcherApi.getGameIcon(appId);
+    url = r?.url || '';
+  } catch {
+    url = '';
+  }
+
+  if (el.dataset.appid !== appId) return; // reused for another game meanwhile
+  if (url) {
+    iconUrlCache.set(appId, url);
+    el.dataset.iconState = 'done';
+    applyIconImage(el, url);
+  } else {
+    delete el.dataset.iconState; // no icon (or temporary failure): ask again next time it is shown
+  }
+}
+
+function createIconObserver(rootEl) {
+  if (typeof IntersectionObserver === 'undefined') return null;
+  return new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      observer.unobserve(entry.target);
+      requestIcon(entry.target);
+    }
+  }, { root: rootEl, rootMargin: '120px' });
+}
+
+function watchIcon(observer, el) {
+  if (!el || el.querySelector('img')) return;
+  if (observer) observer.observe(el);
+  else requestIcon(el);
+}
+
+let sidebarIconObserver = null;
+let modalIconObserver = null;
+
+function setHeroIcon(game) {
+  const heroIconEl = document.getElementById('heroIcon');
+  if (!heroIconEl) return;
+
+  heroIconEl.textContent = iconLetter(game?.name);
+  heroIconEl.dataset.appid = String(game?.appId ?? '');
+  delete heroIconEl.dataset.iconState;
+  heroIconEl.style.display = 'inline-flex';
+
+  const cached = iconUrlCache.get(heroIconEl.dataset.appid);
+  if (cached) applyIconImage(heroIconEl, cached);
+  else requestIcon(heroIconEl);
+}
+
+// The library can hold thousands of games (see "Add ALL recognized games"); drawing every row
+// at once would make the sidebar sluggish, so only the first rows that match are drawn.
+const MAIN_LIST_LIMIT = 500;
+const nameCollator = new Intl.Collator();
+
 function renderMainList(filter = '') {
   gameListEl.innerHTML = '';
 
+  if (sidebarIconObserver) sidebarIconObserver.disconnect();
+  sidebarIconObserver = createIconObserver(gameListEl);
+
   const sortedGames = [...myGames].sort((a, b) => {
-    if (a.isFavorite === b.isFavorite) return a.name.localeCompare(b.name);
+    if (a.isFavorite === b.isFavorite) return nameCollator.compare(a.name, b.name);
     return a.isFavorite ? -1 : 1;
   });
 
   const term = filter.toLowerCase();
+  let matched = 0;
+  let shown = 0;
   for (const game of sortedGames) {
     if (!game.name.toLowerCase().includes(term)) continue;
+
+    matched += 1;
+    if (shown >= MAIN_LIST_LIMIT) continue;
+    shown += 1;
 
     const div = document.createElement('div');
     const running = isGameRunning(game);
@@ -153,6 +270,10 @@ function renderMainList(filter = '') {
       <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${game.name}</div>
       <div class="fav-icon">${starSvg}</div>
     `;
+
+    const iconEl = createIconEl(game);
+    div.insertBefore(iconEl, div.children[1]);
+    watchIcon(sidebarIconObserver, iconEl);
 
     div.addEventListener('click', async (e) => {
       if (e.target.closest('.fav-icon')) {
@@ -168,6 +289,13 @@ function renderMainList(filter = '') {
     });
 
     gameListEl.appendChild(div);
+  }
+
+  if (matched > shown) {
+    const note = document.createElement('div');
+    note.className = 'list-note';
+    note.textContent = `Showing ${shown} of ${matched} games. Type in the filter above to find a specific one.`;
+    gameListEl.appendChild(note);
   }
 }
 
@@ -268,6 +396,7 @@ async function selectGame(game) {
 
   document.getElementById('heroTitle').innerText = game.name;
   document.getElementById('heroExe').innerText = game.exe;
+  setHeroIcon(game);
 
   updateDetailsPanel();
 
@@ -436,6 +565,8 @@ function resetAndRenderModal(filter) {
     loading: false
   };
   modalListEl.innerHTML = '';
+  if (modalIconObserver) modalIconObserver.disconnect();
+  modalIconObserver = createIconObserver(modalListEl);
   renderNextModalPage();
 }
 
@@ -497,6 +628,10 @@ async function renderNextModalPage() {
       <div style="color:var(--brand); font-weight:bold; font-size:12px;">+ ADD</div>
     `;
 
+    const modalIconEl = createIconEl({ appId: game.id, name: game.name });
+    div.insertBefore(modalIconEl, div.firstChild);
+    watchIcon(modalIconObserver, modalIconEl);
+
     div.onclick = async () => {
       // --- CHECK DETECTION FLAG BEFORE ADDING ---
       if (game.usesNewDetection) {
@@ -545,7 +680,11 @@ async function refreshMyGames() {
 async function ensureDatabaseSynced() {
   try {
     const r = await launcherApi.syncGameList();
-    log(r.updated ? 'Updated gamelist.json from Discord API.' : 'gamelist.json already up-to-date.', 'log-success');
+    if (r.offline) {
+      log('Could not reach Discord; using the local game list.', 'log-danger');
+    } else {
+      log(r.updated ? 'Updated gamelist.json from Discord API.' : 'gamelist.json already up-to-date.', 'log-success');
+    }
   } catch (e) {
     log(`Could not sync gamelist.json: ${String(e.message || e)}`, 'log-danger');
   }
@@ -652,6 +791,243 @@ if (updateInstallBtn) {
       if (updateProgressWrap) updateProgressWrap.style.display = 'none';
     }
   });
+}
+
+// ───────────────────────────────────────────────────────────
+// Popular games pack
+// ───────────────────────────────────────────────────────────
+const addPopularBtn = document.getElementById('addPopularBtn');
+if (addPopularBtn) {
+  addPopularBtn.addEventListener('click', async () => {
+    addPopularBtn.disabled = true;
+    addPopularBtn.textContent = 'Adding…';
+    try {
+      const r = await launcherApi.addPopularGames();
+      if (!r?.ok || r.matched === 0) {
+        log('No popular games matched Discord\'s list. Try restarting to sync the game list.', 'log-danger');
+        return;
+      }
+      log(`Popular pack: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      closeModal();
+      await refreshMyGames();
+    } catch (e) {
+      log(`Could not add popular games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    } finally {
+      addPopularBtn.disabled = false;
+      addPopularBtn.textContent = 'Add popular games pack';
+    }
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+// Add ALL recognized games
+// ───────────────────────────────────────────────────────────
+const addAllBtn = document.getElementById('addAllBtn');
+if (addAllBtn) {
+  addAllBtn.addEventListener('click', async () => {
+    const proceed = window.confirm(
+      'Add every game Discord recognizes (thousands) to your library?\n\n' +
+      'Your current library is kept (a backup is saved as myGames.json.bak). ' +
+      'The sidebar shows the first 500 games; use the filter to find the rest.'
+    );
+    if (!proceed) return;
+
+    addAllBtn.disabled = true;
+    addAllBtn.textContent = 'Adding…';
+    try {
+      const r = await launcherApi.addAllGames();
+      if (!r?.ok) {
+        log(`Could not add all games: ${escapeHtml(r?.error || 'unknown error')}`, 'log-danger');
+        return;
+      }
+      log(`All games: added ${r.added} game(s) (${r.matched - r.added} already in your library).`, 'log-success');
+      closeModal();
+      await refreshMyGames();
+    } catch (e) {
+      log(`Could not add all games: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    } finally {
+      addAllBtn.disabled = false;
+      addAllBtn.textContent = 'Add ALL recognized games';
+    }
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+// Random mode
+// ───────────────────────────────────────────────────────────
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value ?? '');
+  return div.innerHTML;
+}
+
+const randomModal = document.getElementById('randomModal');
+const openRandomModalBtn = document.getElementById('openRandomModalBtn');
+const randomBtnText = document.getElementById('randomBtnText');
+const randomCloseBtn = document.getElementById('randomCloseBtn');
+const randomMinutesInput = document.getElementById('randomMinutes');
+const randomSourceSelect = document.getElementById('randomSource');
+const randomPoolEl = document.getElementById('randomPool');
+const randomStateEl = document.getElementById('randomState');
+const randomCurrentEl = document.getElementById('randomCurrent');
+const randomCountdownEl = document.getElementById('randomCountdown');
+const randomSwitchesEl = document.getElementById('randomSwitches');
+const randomErrorRow = document.getElementById('randomErrorRow');
+const randomErrorEl = document.getElementById('randomError');
+const randomToggleBtn = document.getElementById('randomToggleBtn');
+const randomToggleText = document.getElementById('randomToggleText');
+
+let randomStatus = { active: false };
+let randomCurrentKey = '';
+let randomCountdownTimer = null;
+let randomBusy = false;
+
+function readRandomPrefs() {
+  try {
+    const minutes = Number(localStorage.getItem('randomMinutes'));
+    const source = localStorage.getItem('randomSource');
+    if (Number.isFinite(minutes) && minutes >= 1) randomMinutesInput.value = String(Math.min(1440, Math.round(minutes)));
+    if (source === 'library' || source === 'database') randomSourceSelect.value = source;
+  } catch { /* storage may be unavailable */ }
+}
+
+function saveRandomPrefs() {
+  try {
+    localStorage.setItem('randomMinutes', String(randomMinutesInput.value));
+    localStorage.setItem('randomSource', String(randomSourceSelect.value));
+  } catch { /* ignore */ }
+}
+
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function updateRandomCountdown() {
+  if (!randomStatus?.active) {
+    randomCountdownEl.textContent = '—';
+    return;
+  }
+  randomCountdownEl.textContent = randomStatus.nextSwitchAt
+    ? formatCountdown(randomStatus.nextSwitchAt - Date.now())
+    : 'switching…';
+}
+
+function renderRandomStatus() {
+  const active = Boolean(randomStatus?.active);
+
+  randomStateEl.textContent = active ? 'Running' : 'Stopped';
+  randomStateEl.style.color = active ? 'var(--success)' : 'var(--text-muted)';
+  randomCurrentEl.textContent = randomStatus?.current?.name || '—';
+  randomSwitchesEl.textContent = String(randomStatus?.switches || 0);
+
+  const issue = randomStatus?.lastError || '';
+  randomErrorRow.style.display = issue ? 'block' : 'none';
+  randomErrorEl.textContent = issue;
+
+  randomMinutesInput.disabled = active;
+  randomSourceSelect.disabled = active;
+  randomToggleBtn.classList.toggle('running', active);
+  randomToggleText.textContent = active ? 'Stop random mode' : 'Start random mode';
+
+  openRandomModalBtn.classList.toggle('active', active);
+  randomBtnText.textContent = active ? 'Random Mode · ON' : 'Random Mode';
+
+  updateRandomCountdown();
+
+  if (active && !randomCountdownTimer) {
+    randomCountdownTimer = window.setInterval(updateRandomCountdown, 1000);
+  } else if (!active && randomCountdownTimer) {
+    window.clearInterval(randomCountdownTimer);
+    randomCountdownTimer = null;
+  }
+}
+
+async function refreshRandomPoolSize() {
+  try {
+    const r = await launcherApi.getRandomPoolSize(randomSourceSelect.value);
+    randomPoolEl.textContent = `Pool: ${r?.size ?? 0} recognized game(s)`;
+  } catch {
+    randomPoolEl.textContent = 'Pool: —';
+  }
+}
+
+function applyRandomStatus(status) {
+  const previousKey = randomCurrentKey;
+  const nextKey = status?.current?.key || '';
+
+  // Keep the sidebar "running" dots in sync with what random mode launched/stopped.
+  if (previousKey && previousKey !== nextKey) runningGames.delete(previousKey);
+  if (nextKey) runningGames.add(nextKey);
+
+  if (nextKey && nextKey !== previousKey) {
+    log(`Random mode: now playing ${escapeHtml(status.current.name)}`, 'log-success');
+  } else if (randomStatus?.active && !status?.active) {
+    log('Random mode stopped.', 'log-danger');
+  }
+  if (status?.lastError && status.lastError !== randomStatus?.lastError) {
+    log(`Random mode: ${escapeHtml(status.lastError)}`, 'log-danger');
+  }
+
+  randomCurrentKey = nextKey;
+  randomStatus = status || { active: false };
+
+  renderRandomStatus();
+  renderMainList(searchInput.value);
+  syncSelectedGameLaunchState();
+}
+
+openRandomModalBtn.addEventListener('click', async () => {
+  readRandomPrefs();
+  randomModal.style.display = 'flex';
+  try {
+    randomStatus = (await launcherApi.getRandomStatus()) || { active: false };
+  } catch {
+    randomStatus = { active: false };
+  }
+  renderRandomStatus();
+  refreshRandomPoolSize();
+});
+
+randomCloseBtn.addEventListener('click', () => { randomModal.style.display = 'none'; });
+randomSourceSelect.addEventListener('change', () => { saveRandomPrefs(); refreshRandomPoolSize(); });
+randomMinutesInput.addEventListener('change', saveRandomPrefs);
+
+randomToggleBtn.addEventListener('click', async () => {
+  if (randomBusy) return;
+  randomBusy = true;
+  randomToggleBtn.disabled = true;
+
+  try {
+    if (randomStatus?.active) {
+      await launcherApi.stopRandomMode();
+    } else {
+      const minutes = Number(randomMinutesInput.value);
+      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+        log('Random mode: enter a number of minutes between 1 and 1440.', 'log-danger');
+        return;
+      }
+      saveRandomPrefs();
+      randomToggleText.textContent = 'Starting…';
+      const r = await launcherApi.startRandomMode(minutes, randomSourceSelect.value);
+      if (!r?.ok) {
+        log(`Random mode: ${escapeHtml(r?.error || 'could not start')}`, 'log-danger');
+        renderRandomStatus();
+      }
+    }
+  } catch (e) {
+    log(`Random mode error: ${escapeHtml(String(e?.message || e))}`, 'log-danger');
+    renderRandomStatus();
+  } finally {
+    randomBusy = false;
+    randomToggleBtn.disabled = false;
+  }
+});
+
+if (launcherApi.onRandomChanged) {
+  launcherApi.onRandomChanged((status) => applyRandomStatus(status));
 }
 
 // Window controls
