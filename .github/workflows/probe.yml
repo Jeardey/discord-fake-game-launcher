@@ -1,0 +1,80 @@
+name: discord-api-probe
+on:
+  push:
+    branches: [ 'tmp/discord-api-probe' ]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Discord + GitHub APIs
+        run: |
+          node - <<'JS'
+          const UA = { 'User-Agent': 'DiscordFakeGameLauncherUI/0.1.0', 'Accept': 'application/json' };
+          const log = (...a) => console.log(...a);
+          async function get(url, opts = {}) {
+            const r = await fetch(url, { headers: UA, ...opts });
+            return r;
+          }
+          (async () => {
+            // 1) detectable list
+            const r = await get('https://discord.com/api/applications/detectable');
+            log('DETECTABLE status', r.status, 'ctype', r.headers.get('content-type'));
+            const list = await r.json();
+            log('DETECTABLE count', list.length);
+            const keyCount = {};
+            for (const e of list) for (const k of Object.keys(e)) keyCount[k] = (keyCount[k] || 0) + 1;
+            log('DETECTABLE keys', JSON.stringify(keyCount));
+            const withIcon = list.filter(e => typeof e.icon === 'string' && e.icon).length;
+            log('DETECTABLE entries with icon string', withIcon);
+            log('DETECTABLE sample', JSON.stringify(list.slice(0, 2)).slice(0, 700));
+
+            // 2) RPC lookups for a handful of well-known + first entries
+            const names = ['Fortnite', 'VALORANT', 'Minecraft', 'Blue Fire', 'Terraria', 'Grand Theft Auto V'];
+            const sample = [];
+            for (const n of names) { const e = list.find(x => x.name === n); if (e) sample.push(e); }
+            for (const e of list.slice(0, 4)) sample.push(e);
+            for (const e of sample) {
+              const u = `https://discord.com/api/v10/applications/${e.id}/rpc`;
+              const rr = await get(u);
+              let j = null; try { j = await rr.json(); } catch {}
+              log('RPC', e.name, e.id, 'status', rr.status, 'keys', j ? Object.keys(j).join(',') : '-', 'icon', j && j.icon);
+              if (j && j.icon) {
+                const cdn = `https://cdn.discordapp.com/app-icons/${e.id}/${j.icon}.png?size=64`;
+                const cr = await fetch(cdn);
+                const buf = await cr.arrayBuffer();
+                log('  CDN', cr.status, cr.headers.get('content-type'), buf.byteLength, 'bytes');
+              }
+            }
+
+            // 3) other endpoints that might give icons in bulk
+            const ids = sample.slice(0, 3).map(e => e.id).join('&application_ids=');
+            const pub = await get(`https://discord.com/api/v10/applications/public?application_ids=${ids}`);
+            log('PUBLIC bulk status', pub.status, (await pub.text()).slice(0, 200));
+
+            // 4) rate behaviour: 80 lookups with concurrency 4 over random entries
+            const pick = Array.from({ length: 80 }, (_, i) => list[(i * 97) % list.length]);
+            let ok = 0, nf = 0, rl = 0, other = 0, withI = 0; let rlHeaders = null;
+            let idx = 0;
+            async function worker() {
+              while (idx < pick.length) {
+                const e = pick[idx++];
+                const rr = await get(`https://discord.com/api/v10/applications/${e.id}/rpc`);
+                if (rr.status === 200) { ok++; const j = await rr.json(); if (j.icon) withI++; }
+                else if (rr.status === 404) nf++;
+                else if (rr.status === 429) { rl++; rlHeaders = rr.headers.get('retry-after'); }
+                else other++;
+              }
+            }
+            const t0 = Date.now();
+            await Promise.all([worker(), worker(), worker(), worker()]);
+            log('RATE 80 lookups ms', Date.now() - t0, 'ok', ok, 'withIcon', withI, '404', nf, '429', rl, 'retry-after', rlHeaders, 'other', other);
+
+            // 5) GitHub releases of the user's repo (unauthenticated)
+            const gh = await get('https://api.github.com/repos/naustagic/discord-fake-game-launcher/releases/latest', { headers: { 'User-Agent': 'probe', Accept: 'application/vnd.github+json' } });
+            const ghj = await gh.json();
+            log('GITHUB latest status', gh.status, 'tag', ghj.tag_name, 'name', ghj.name, 'html_url', ghj.html_url, 'prerelease', ghj.prerelease, 'draft', ghj.draft);
+            const gl = await get('https://api.github.com/repos/naustagic/discord-fake-game-launcher/releases?per_page=5', { headers: { 'User-Agent': 'probe', Accept: 'application/vnd.github+json' } });
+            const glj = await gl.json();
+            log('GITHUB releases', gl.status, JSON.stringify((Array.isArray(glj) ? glj : []).map(x => x.tag_name)));
+          })().catch(e => { console.log('PROBE ERROR', e); process.exit(1); });
+          JS
