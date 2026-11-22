@@ -156,6 +156,11 @@ próxima vez que los inicies. Si quieres recuperar la pequeña ventana "fake pro
 entorno `FAKEGAME_SHOW_WINDOW=1` antes de abrir la app. Los accesos directos del escritorio siguen abriendo
 la ventana visible.
 
+La ventana invisible es una ventana de tamaño normal, casi transparente, que no recibe clics, queda detrás de
+todo y no aparece en la barra de tareas, así Discord sigue viendo una ventana de juego real. Si Discord no
+detecta un juego en tu PC, activa **Mostrar ventana del juego falso** al pie de la barra lateral (se aplica
+al próximo juego que inicies).
+
 ## Compilar
 
 Necesitas el SDK de .NET (8.0+) y Node.js 20+ (para la interfaz Electron).

@@ -199,3 +199,19 @@ test('GTA IV matches by name and by edition-suffixed names, but not GTA V', () =
   const names = matchPopularGames(games, POPULAR_GAME_NAMES).map(g => g.name).sort();
   assert.deepEqual(names, ['Grand Theft Auto IV', 'Grand Theft Auto IV: Complete Edition', 'Grand Theft Auto V']);
 });
+
+test('the next game is announced in advance and is the one that starts at the next switch', async () => {
+  const h = makeHarness({ pool: POOL });
+  await h.controller.start({ minutes: 2, source: 'library' });
+
+  const first = h.controller.status();
+  assert.ok(first.next, 'a next game is announced right after start');
+  assert.notEqual(first.next.key, first.current.key, 'next is not the game already playing');
+
+  await h.tick();
+  assert.equal(h.launched[1], first.next.name, 'the announced game really starts');
+  assert.ok(h.controller.status().next, 'a new next game is announced after the switch');
+
+  await h.controller.stop();
+  assert.equal(h.controller.status().next, null, 'no next game once random mode is off');
+});

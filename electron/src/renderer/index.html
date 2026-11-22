@@ -48,6 +48,10 @@
           <span data-i18n="credits.developedBy">Developed by</span>
           <strong class="credits-dev">saralapia</strong>
         </div>
+        <label class="toggle-row" id="showWindowRow" data-i18n-title="settings.showWindowHint">
+          <input type="checkbox" id="showWindowToggle" />
+          <span data-i18n="settings.showWindow">Show fake game window</span>
+        </label>
         <div class="credits-meta">
           <span id="appVersion"></span>
           <button class="link-btn" id="checkUpdateBtn" data-i18n="update.check">Check for updates</button>
@@ -82,6 +86,7 @@
                 <svg id="stopIcon" width="24" height="24" fill="currentColor" style="margin-right: 12px; display: none;"><rect x="6" y="6" width="12" height="12"/></svg>
                 <span id="launchBtnText" data-i18n="btn.launch">Launch Game</span>
               </button>
+              <div class="lock-hint" id="lockHint" style="display:none;" data-i18n="random.manualLocked">Random Mode is on.</div>
             </div>
           </div>
 
@@ -108,6 +113,22 @@
           </div>
 
           </div>
+      </div>
+
+      <div class="random-bar" id="randomBar" style="display:none;">
+        <div class="rb-head">
+          <span class="rb-pill"><span class="rb-dot"></span><span data-i18n="sidebar.random">Random Mode</span></span>
+          <span class="rb-count"><span data-i18n="random.nextSwitch">Next switch in</span> <strong id="rbCountdown">—</strong></span>
+          <span class="rb-spacer"></span>
+          <button class="rb-btn" id="rbManage" data-i18n="random.manage">Settings</button>
+          <button class="rb-btn danger" id="rbStop" data-i18n="random.stop">Stop random mode</button>
+        </div>
+        <div class="rb-games">
+          <div class="rb-game" id="rbNow"></div>
+          <div class="rb-arrow" aria-hidden="true">›</div>
+          <div class="rb-game next" id="rbNext"></div>
+        </div>
+        <div class="rb-progress"><div class="rb-progress-fill" id="rbFill"></div></div>
       </div>
 
       <div class="console-area">
@@ -156,6 +177,12 @@
           <option value="database" data-i18n="random.database">Entire Discord database</option>
         </select>
         <div class="random-pool" id="randomPool">Pool: —</div>
+
+        <div class="rb-games rb-games-modal" id="rmGames" style="display:none;">
+          <div class="rb-game" id="rmNow"></div>
+          <div class="rb-arrow" aria-hidden="true">›</div>
+          <div class="rb-game next" id="rmNext"></div>
+        </div>
 
         <div class="random-status" id="randomStatus">
           <div><span class="random-status-label" data-i18n="random.state">State</span> <span id="randomState">Stopped</span></div>

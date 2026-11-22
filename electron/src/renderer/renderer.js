@@ -988,13 +988,86 @@ function formatCountdown(ms) {
 }
 
 function updateRandomCountdown() {
+  const rbCountdown = document.getElementById('rbCountdown');
+  const rbFill = document.getElementById('rbFill');
+
   if (!randomStatus?.active) {
     randomCountdownEl.textContent = '—';
+    if (rbCountdown) rbCountdown.textContent = '—';
+    if (rbFill) rbFill.style.width = '0%';
     return;
   }
-  randomCountdownEl.textContent = randomStatus.nextSwitchAt
+
+  const text = randomStatus.nextSwitchAt
     ? formatCountdown(randomStatus.nextSwitchAt - Date.now())
     : t('random.switching');
+  randomCountdownEl.textContent = text;
+  if (rbCountdown) rbCountdown.textContent = text;
+
+  // Progress bar: how much of the current interval has already passed.
+  const total = (Number(randomStatus.intervalMinutes) || 0) * 60 * 1000;
+  if (rbFill && total > 0 && randomStatus.nextSwitchAt) {
+    const left = Math.max(0, Math.min(total, randomStatus.nextSwitchAt - Date.now()));
+    rbFill.style.width = `${(100 - (left / total) * 100).toFixed(1)}%`;
+  }
+}
+
+// Game "cards" (icon + name) shown in the Random Mode bar and in its settings window.
+let randomCardsKey = '';
+
+function fillGameCard(el, labelKey, game, emptyKey) {
+  if (!el) return;
+  el.textContent = '';
+
+  const icon = createIconEl({ appId: game?.appId, name: game?.name });
+  const info = document.createElement('div');
+  info.className = 'rb-info';
+
+  const label = document.createElement('span');
+  label.className = 'rb-label';
+  label.textContent = t(labelKey);
+
+  const name = document.createElement('span');
+  name.className = 'rb-name';
+  name.textContent = game?.name || (emptyKey ? t(emptyKey) : '—');
+  name.title = game?.name || '';
+
+  info.append(label, name);
+  if (game?.exe) {
+    const exe = document.createElement('span');
+    exe.className = 'rb-exe';
+    exe.textContent = game.exe;
+    info.append(exe);
+  }
+
+  el.append(icon, info);
+  if (game) watchIcon(null, icon);
+}
+
+function renderRandomCards() {
+  const active = Boolean(randomStatus?.active);
+  const bar = document.getElementById('randomBar');
+  const modalGames = document.getElementById('rmGames');
+  if (bar) bar.style.display = active ? 'block' : 'none';
+  if (modalGames) modalGames.style.display = active ? 'flex' : 'none';
+
+  if (!active) {
+    randomCardsKey = '';
+    return;
+  }
+
+  const key = `${currentLanguage}|${randomStatus.current?.key || ''}|${randomStatus.next?.key || ''}`;
+  if (key === randomCardsKey) return; // icons are only redrawn when a game changes
+  randomCardsKey = key;
+
+  for (const [id, labelKey, game, emptyKey] of [
+    ['rbNow', 'random.nowPlaying', randomStatus.current, 'random.switching'],
+    ['rbNext', 'random.next', randomStatus.next, 'random.pickingNext'],
+    ['rmNow', 'random.nowPlaying', randomStatus.current, 'random.switching'],
+    ['rmNext', 'random.next', randomStatus.next, 'random.pickingNext']
+  ]) {
+    fillGameCard(document.getElementById(id), labelKey, game, emptyKey);
+  }
 }
 
 function renderRandomStatus() {
@@ -1016,6 +1089,14 @@ function renderRandomStatus() {
 
   openRandomModalBtn.classList.toggle('active', active);
   randomBtnText.textContent = active ? t('sidebar.randomOn') : t('sidebar.random');
+
+  // While Random Mode is on, games cannot be launched or stopped by hand.
+  launchBtn.disabled = active;
+  launchBtn.title = active ? t('random.manualLocked') : '';
+  const lockHint = document.getElementById('lockHint');
+  if (lockHint) lockHint.style.display = active ? 'block' : 'none';
+
+  renderRandomCards();
 
   updateRandomCountdown();
 
@@ -1131,6 +1212,17 @@ launcherApi.onGameExited((payload = {}) => {
   updateDetailsPanel();
 });
 
+document.getElementById('rbManage')?.addEventListener('click', () => openRandomModalBtn.click());
+document.getElementById('rbStop')?.addEventListener('click', () => randomToggleBtn.click());
+
+// "Show fake game window" switch (off = invisible window, the default).
+const showWindowToggle = document.getElementById('showWindowToggle');
+if (showWindowToggle) {
+  showWindowToggle.addEventListener('change', async () => {
+    try { await launcherApi.setShowFakeWindow(showWindowToggle.checked); } catch { /* ignore */ }
+  });
+}
+
 // ───────────────────────────────────────────────────────────
 // Language switching
 // ───────────────────────────────────────────────────────────
@@ -1144,6 +1236,9 @@ function applyStaticTranslations() {
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
     el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    el.setAttribute('title', t(el.dataset.i18nTitle));
   });
 
   if (langSelect) {
@@ -1216,6 +1311,16 @@ if (langSelect) {
       applyStaticTranslations();
     } catch { /* version is only informative */ }
   }
+
+  if (showWindowToggle && launcherApi.getSettings) {
+    try { showWindowToggle.checked = Boolean((await launcherApi.getSettings())?.showFakeWindow); } catch { /* ignore */ }
+  }
+
+  // Random Mode may already be running (the window can be reloaded): show it right away.
+  try {
+    const current = await launcherApi.getRandomStatus();
+    if (current?.active) applyRandomStatus(current);
+  } catch { /* ignore */ }
 
   await ensureDatabaseSynced();
   await refreshMyGames();

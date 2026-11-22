@@ -146,6 +146,11 @@ aleatório. Jogos falsos criados por uma versão antiga são atualizados na pró
 Se quiser a janelinha "fake process" de volta, defina a variável de ambiente `FAKEGAME_SHOW_WINDOW=1` antes
 de abrir o app. Os atalhos da área de trabalho continuam abrindo a janela visível.
 
+A janela invisível é uma janela de tamanho normal, quase transparente, que não recebe cliques, fica atrás de
+tudo e não aparece na barra de tarefas, então o Discord ainda enxerga uma janela de jogo real. Se o Discord
+não detectar um jogo no seu PC, ative **Mostrar janela do jogo falso** no rodapé da barra lateral (vale para
+o próximo jogo que você iniciar).
+
 ## Compilar
 
 Você precisa do .NET SDK (8.0+) e do Node.js 20+ (para a interface Electron).

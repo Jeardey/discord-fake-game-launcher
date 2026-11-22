@@ -143,6 +143,10 @@ Fake games created by an older version are updated the next time you launch them
 "fake process" window back, set the environment variable `FAKEGAME_SHOW_WINDOW=1` before starting the app.
 Desktop shortcuts keep opening the visible window.
 
+The invisible window is a normal-sized, almost transparent, click-through window that stays behind everything
+and is not in the taskbar, so Discord still sees a real game window. If Discord does not detect a game on your
+PC, turn on **Show fake game window** at the bottom of the sidebar (it applies to the next game you start).
+
 ## Build
 
 You need the .NET SDK (8.0+) and Node.js 20+ (for the Electron UI).

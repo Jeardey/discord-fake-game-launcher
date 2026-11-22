@@ -794,3 +794,52 @@ body {
 .update-progress-fill { background: linear-gradient(90deg, var(--brand), var(--brand-2)); border-radius: 999px; }
 
 @keyframes modalIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* ── Random Mode bar (always visible while Random Mode is on) ── */
+.random-bar {
+  margin: 0 24px 14px; padding: 12px 14px 0; border-radius: 16px; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, rgba(124, 108, 255, 0.16), rgba(62, 166, 255, 0.08));
+  border: 1px solid rgba(124, 108, 255, 0.35); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.rb-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.rb-spacer { flex: 1; }
+.rb-pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(52, 211, 153, 0.14); color: var(--success); font-size: 11px; font-weight: 800;
+  letter-spacing: 0.6px; text-transform: uppercase;
+}
+.rb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: rbPulse 1.6s infinite; }
+@keyframes rbPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,.6); } 50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); } }
+.rb-count { color: var(--text-muted); font-size: 12px; }
+.rb-count strong { color: var(--text-header); font-variant-numeric: tabular-nums; font-size: 14px; margin-left: 4px; }
+.rb-btn {
+  border: 1px solid var(--border); background: rgba(255, 255, 255, 0.05); color: var(--text-normal);
+  border-radius: 10px; padding: 6px 12px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.rb-btn:hover { background: var(--bg-hover); border-color: rgba(124, 108, 255, 0.55); }
+.rb-btn.danger { color: var(--danger); }
+.rb-btn.danger:hover { background: rgba(255, 84, 112, 0.12); border-color: rgba(255, 84, 112, 0.5); }
+
+.rb-games { display: flex; align-items: center; gap: 12px; }
+.rb-game {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px;
+  background: rgba(0, 0, 0, 0.22); border: 1px solid var(--border);
+}
+.rb-game.next { opacity: 0.8; }
+.rb-game .game-icon { width: 46px; height: 46px; margin-right: 0; border-radius: 12px; font-size: 18px; }
+.rb-info { display: flex; flex-direction: column; min-width: 0; }
+.rb-label { font-size: 10px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase; color: var(--brand-2); }
+.rb-game.next .rb-label { color: var(--text-muted); }
+.rb-name { font-weight: 700; color: var(--text-header); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-exe { font-family: 'Consolas', monospace; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-arrow { font-size: 26px; color: var(--text-muted); line-height: 1; }
+.rb-games-modal { margin-top: 14px; flex-direction: column; align-items: stretch; gap: 8px; }
+.rb-games-modal .rb-arrow { display: none; }
+.rb-progress { height: 4px; margin: 12px -14px 0; background: rgba(255, 255, 255, 0.06); }
+.rb-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width 1s linear; }
+
+.lock-hint { margin-top: 8px; max-width: 260px; font-size: 11px; line-height: 1.35; color: var(--text-muted); text-align: right; }
+
+.toggle-row { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.toggle-row input { accent-color: var(--brand); cursor: pointer; }
+.toggle-row:hover { color: var(--text-normal); }

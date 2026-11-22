@@ -13,9 +13,23 @@ const { createIconResolver } = require('./game-icons');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
-// Fake game processes run without a visible window by default. Set FAKEGAME_SHOW_WINDOW=1
-// (environment variable) to bring the little "fake process" window back.
-const HIDE_FAKE_WINDOWS = process.env.FAKEGAME_SHOW_WINDOW !== '1';
+// Fake game processes run with an invisible window by default. The "Show fake game window"
+// switch in the app (or FAKEGAME_SHOW_WINDOW=1) brings the little "fake process" window back,
+// in case Discord does not detect a game in the invisible mode on some PC.
+let appSettings = null; // { showFakeWindow: boolean }
+
+async function getSettings() {
+  if (!appSettings) {
+    const saved = await readJsonIfExists(path.join(app.getPath('userData'), 'settings.json'), {});
+    appSettings = { showFakeWindow: Boolean(saved && saved.showFakeWindow) };
+  }
+  return appSettings;
+}
+
+async function shouldHideFakeWindows() {
+  if (process.env.FAKEGAME_SHOW_WINDOW === '1') return false;
+  return !(await getSettings()).showFakeWindow;
+}
 
 // In-memory cache to avoid re-reading/parsing large gamelist.json on every search.
 let databaseCache = {
@@ -445,7 +459,8 @@ async function createWindow() {
     minWidth: 900,
     minHeight: 600,
     frame: false,
-    backgroundColor: '#36393f',
+    backgroundColor: '#141526',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -706,7 +721,7 @@ async function launchFakeGame(game) {
   const displayName = String(game?.name || path.basename(destExePath));
 
   // "--hidden" is understood by the current DummyGame build; older builds just ignore it.
-  const spawnArgs = HIDE_FAKE_WINDOWS ? [displayName, '--hidden'] : [displayName];
+  const spawnArgs = (await shouldHideFakeWindows()) ? [displayName, '--hidden'] : [displayName];
 
   const proc = spawn(destExePath, spawnArgs, {
     cwd: workingDirectory,
@@ -735,7 +750,11 @@ async function launchFakeGame(game) {
   return { ok: true, exePath: destExePath, gameKey };
 }
 
-ipcMain.handle('launcher/launchGame', async (_evt, game) => launchFakeGame(game));
+ipcMain.handle('launcher/launchGame', async (_evt, game) => {
+  // Manual launches are only allowed while Random Mode is off.
+  if (randomController.status().active) return { ok: false, error: 'Random Mode is on. Turn it off to launch games manually.' };
+  return launchFakeGame(game);
+});
 
 // Stops one fake game and resolves once its process is gone (or after a short timeout).
 function stopFakeGame(game) {
@@ -936,6 +955,10 @@ ipcMain.handle('launcher/getGameIcon', async (_evt, { appId } = {}) => {
 
 ipcMain.handle('launcher/stopGame', async (_evt, game) => {
   const requestedKey = game ? makeGameKey(game) : null;
+  const randomState = randomController.status();
+  if (randomState.active && (!requestedKey || requestedKey === randomState.current?.key)) {
+    return { ok: false, error: 'Random Mode is on. Stop it to control games manually.' };
+  }
 
   if (!requestedKey) {
     for (const [gameKey, proc] of [...runningProcesses.entries()]) {
@@ -971,6 +994,18 @@ ipcMain.handle('update/remindLater', async () => {
 });
 
 ipcMain.handle('app/getVersion', () => app.getVersion());
+
+ipcMain.handle('settings/get', async () => ({ ...(await getSettings()) }));
+
+ipcMain.handle('settings/setShowFakeWindow', async (_evt, value) => {
+  const settings = await getSettings();
+  settings.showFakeWindow = Boolean(value);
+  try {
+    ensureDirSync(app.getPath('userData'));
+    await writeJson(path.join(app.getPath('userData'), 'settings.json'), settings);
+  } catch { /* the choice still applies until the app closes */ }
+  return { ...settings };
+});
 
 ipcMain.handle('update/check', async () => checkForUpdatesNow());
 

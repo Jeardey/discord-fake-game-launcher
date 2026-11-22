@@ -167,6 +167,7 @@ function createRandomController(deps) {
   let lastError = null;
   let poolSize = 0;
   let recent = [];
+  let upcoming = null;       // game already chosen to start at the next switch
 
   function status() {
     return {
@@ -177,7 +178,8 @@ function createRandomController(deps) {
       switches,
       nextSwitchAt,
       lastError,
-      current: current ? { ...current, key: makeGameKey(current) } : null
+      current: current ? { ...current, key: makeGameKey(current) } : null,
+      next: upcoming ? { ...upcoming, key: makeGameKey(upcoming) } : null
     };
   }
 
@@ -201,6 +203,16 @@ function createRandomController(deps) {
       timer = null;
       switchGame(myRun).catch(() => { /* handled inside */ });
     }, ms);
+  }
+
+  // Chooses (and shows) which game will start at the next switch.
+  function planNext() {
+    try {
+      const pool = getPool(source) || [];
+      upcoming = pickNextGame(pool, { recentKeys: recent, runningKeys: getRunningKeys(), rng }) || null;
+    } catch {
+      upcoming = null;
+    }
   }
 
   async function stopCurrent() {
@@ -228,10 +240,15 @@ function createRandomController(deps) {
       const tried = new Set();
       let launched = null;
       lastError = null;
+      const preferred = upcoming; // the game that was announced as "next"
+      upcoming = null;
 
       for (let attempt = 0; attempt < MAX_LAUNCH_ATTEMPTS; attempt++) {
         const remaining = pool.filter(g => !tried.has(makeGameKey(g)));
-        const game = pickNextGame(remaining, {
+        const preferredKey = preferred ? makeGameKey(preferred) : '';
+        const usePreferred = attempt === 0 && preferred
+          && !tried.has(preferredKey) && !getRunningKeys().has(preferredKey);
+        const game = usePreferred ? preferred : pickNextGame(remaining, {
           recentKeys: recent,
           runningKeys: getRunningKeys(),
           rng
@@ -273,6 +290,7 @@ function createRandomController(deps) {
         lastError = 'No recognized game available to launch.';
       }
 
+      planNext();
       schedule(myRun);
       emit();
     } finally {
@@ -305,6 +323,7 @@ function createRandomController(deps) {
     switches = 0;
     lastError = null;
     current = null;
+    upcoming = null;
     recent = [];
     emit();
 
@@ -317,6 +336,7 @@ function createRandomController(deps) {
     active = false;
     runId += 1;
     clearScheduled();
+    upcoming = null;
     await stopCurrent();
     emit();
     return { ok: true, status: status() };
