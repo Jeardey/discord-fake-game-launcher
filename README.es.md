@@ -54,7 +54,7 @@ raíz, y como **juego falso** cuando se ejecuta desde una subcarpeta dentro de `
 - **Modo aleatorio**: alterna entre juegos aleatorios cada X minutos.
 - **Iconos** de los juegos desde Discord, en la lista, en la cabecera de detalles y en la ventana de añadir
   juego.
-- Los juegos falsos inician con la ventana **minimizada** (no aparece nada en pantalla).
+- Los juegos falsos abren una ventanita (necesaria para que Discord los reconozca); se puede iniciar minimizada, pero Discord puede no detectar el juego.
 - Interfaz oscura y moderna en **pt-BR, en y es**.
 - **Aviso automático de actualización**: cuando publicas una nueva versión, los usuarios son avisados y
   actualizan con un clic.
@@ -149,15 +149,15 @@ muestra su primera letra.
 
 ## Ventana del juego falso
 
-Los juegos falsos inician con la ventana **minimizada**, así que no aparece nada en pantalla (queda un botón en la barra de tareas). Elegir un juego solo lo selecciona; no se abre nada. Para detener un juego usa el botón
+Los juegos falsos abren su ventanita, que es lo que Discord necesita para reconocerlos. Elegir un juego solo lo selecciona; no se abre nada. Para detener un juego usa el botón
 **Dejar de jugar** o el modo aleatorio. Los juegos falsos creados por una versión anterior se actualizan la
 próxima vez que los inicies. Si quieres recuperar la pequeña ventana "fake process", define la variable de
 entorno `FAKEGAME_SHOW_WINDOW=1` antes de abrir la app. Los accesos directos del escritorio siguen abriendo
 la ventana visible.
 
-Por defecto la ventana falsa inicia **minimizada**: es una ventana totalmente normal (lo que Discord necesita para
-mostrar el juego como "jugando"), solo que no se muestra. Activa **Mostrar ventana del juego falso** al pie de la
-barra lateral para abrirla normalmente (se aplica al próximo juego que inicies).
+Por defecto la ventana falsa se abre normalmente, porque es el modo que Discord reconoce como "jugando". Si
+desactivas **Mostrar ventana del juego falso** (al pie de la barra lateral), inicia minimizada, pero Discord puede
+no detectar el juego (se aplica al próximo juego que inicies).
 
 ## Compilar
 

@@ -1215,7 +1215,7 @@ launcherApi.onGameExited((payload = {}) => {
 document.getElementById('rbManage')?.addEventListener('click', () => openRandomModalBtn.click());
 document.getElementById('rbStop')?.addEventListener('click', () => randomToggleBtn.click());
 
-// "Show fake game window" switch (off = window starts minimized, the default).
+// "Show fake game window" switch (on = normal window, the default; off = starts minimized).
 const showWindowToggle = document.getElementById('showWindowToggle');
 if (showWindowToggle) {
   showWindowToggle.addEventListener('change', async () => {
@@ -1313,7 +1313,7 @@ if (langSelect) {
   }
 
   if (showWindowToggle && launcherApi.getSettings) {
-    try { showWindowToggle.checked = Boolean((await launcherApi.getSettings())?.showFakeWindow); } catch { /* ignore */ }
+    try { showWindowToggle.checked = (await launcherApi.getSettings())?.showFakeWindow !== false; } catch { /* ignore */ }
   }
 
   // Random Mode may already be running (the window can be reloaded): show it right away.

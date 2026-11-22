@@ -13,14 +13,15 @@ const { createIconResolver } = require('./game-icons');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
-// Fake game processes start with their (normal) window MINIMIZED by default, so nothing pops up.
-// The "Show fake game window" switch in the app (or FAKEGAME_SHOW_WINDOW=1) opens it normally.
+// Fake games open their normal window by default (the only mode Discord is known to recognize).
+// Turning "Show fake game window" off starts the window minimized instead.
 let appSettings = null; // { showFakeWindow: boolean }
 
 async function getSettings() {
   if (!appSettings) {
     const saved = await readJsonIfExists(path.join(app.getPath('userData'), 'settings.json'), {});
-    appSettings = { showFakeWindow: Boolean(saved && saved.showFakeWindow) };
+    // On by default: Discord only recognizes the game while its (normal) window is open.
+    appSettings = { showFakeWindow: !(saved && saved.showFakeWindow === false) };
   }
   return appSettings;
 }
