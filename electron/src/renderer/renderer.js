@@ -1215,7 +1215,7 @@ launcherApi.onGameExited((payload = {}) => {
 document.getElementById('rbManage')?.addEventListener('click', () => openRandomModalBtn.click());
 document.getElementById('rbStop')?.addEventListener('click', () => randomToggleBtn.click());
 
-// "Show fake game window" switch (off = invisible window, the default).
+// "Show fake game window" switch (off = window starts minimized, the default).
 const showWindowToggle = document.getElementById('showWindowToggle');
 if (showWindowToggle) {
   showWindowToggle.addEventListener('change', async () => {

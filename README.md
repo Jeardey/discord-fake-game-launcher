@@ -52,7 +52,7 @@ as the **fake game** when it runs from a subfolder inside `games/`.
 - **Add ALL recognized games** with one click, or the **popular games pack**.
 - **Random Mode**: rotates through random games every X minutes.
 - Game **icons** from Discord, shown in the list, in the details header and in the Add Game window.
-- Fake games run **without a visible window**.
+- Fake games start with their window **minimized** (nothing pops up).
 - Modern dark interface in **pt-BR, en and es**.
 - **Automatic update notice**: when you publish a new version, users are told and update with one click.
 
@@ -137,15 +137,14 @@ saved to disk. If a game has no icon (or you are offline) its first letter is sh
 
 ## Fake game window
 
-Fake games run **without a visible window** (the process is still running, so Discord detects it the same
-way). Choosing a game only selects it; nothing opens. To stop a game use the **Stop** button or Random Mode.
+Fake games start with their window **minimized**, so nothing pops up (a button stays in the taskbar). Choosing a game only selects it; nothing opens. To stop a game use the **Stop** button or Random Mode.
 Fake games created by an older version are updated the next time you launch them. If you want the small
 "fake process" window back, set the environment variable `FAKEGAME_SHOW_WINDOW=1` before starting the app.
 Desktop shortcuts keep opening the visible window.
 
-The invisible window is a normal-sized, almost transparent, click-through window that stays behind everything
-and is not in the taskbar, so Discord still sees a real game window. If Discord does not detect a game on your
-PC, turn on **Show fake game window** at the bottom of the sidebar (it applies to the next game you start).
+By default the fake window starts **minimized**: it is a completely normal window (which is what Discord needs to
+report the game as "playing"), it just is not shown. Turn on **Show fake game window** at the bottom of the sidebar
+to open it normally (it applies to the next game you start).
 
 ## Build
 

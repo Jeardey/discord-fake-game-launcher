@@ -13,9 +13,8 @@ const { createIconResolver } = require('./game-icons');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
-// Fake game processes run with an invisible window by default. The "Show fake game window"
-// switch in the app (or FAKEGAME_SHOW_WINDOW=1) brings the little "fake process" window back,
-// in case Discord does not detect a game in the invisible mode on some PC.
+// Fake game processes start with their (normal) window MINIMIZED by default, so nothing pops up.
+// The "Show fake game window" switch in the app (or FAKEGAME_SHOW_WINDOW=1) opens it normally.
 let appSettings = null; // { showFakeWindow: boolean }
 
 async function getSettings() {

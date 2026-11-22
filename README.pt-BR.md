@@ -52,7 +52,7 @@ O mesmo executável falso funciona como **launcher** quando aberto pelo atalho o
 - **Adicione TODOS os jogos reconhecidos** com um clique, ou o **pacote de jogos populares**.
 - **Modo aleatório**: alterna entre jogos aleatórios a cada X minutos.
 - **Ícones** dos jogos vindos do Discord, na lista, no cabeçalho de detalhes e na janela de adicionar jogo.
-- Os jogos falsos rodam **sem janela visível**.
+- Os jogos falsos iniciam com a janela **minimizada** (nada aparece na tela).
 - Interface escura e moderna em **pt-BR, en e es**.
 - **Aviso automático de atualização**: quando você publica uma nova versão, os usuários são avisados e
   atualizam com um clique.
@@ -140,16 +140,14 @@ memória, nada é salvo no disco. Se um jogo não tem ícone (ou você está off
 
 ## Janela do jogo falso
 
-Os jogos falsos rodam **sem janela visível** (o processo continua rodando, então o Discord detecta do mesmo
-jeito). Escolher um jogo só o seleciona; nada abre. Para parar um jogo use o botão **Parar** ou o modo
+Os jogos falsos iniciam com a janela **minimizada**, então nada aparece na tela (um botão fica na barra de tarefas). Escolher um jogo só o seleciona; nada abre. Para parar um jogo use o botão **Parar** ou o modo
 aleatório. Jogos falsos criados por uma versão antiga são atualizados na próxima vez que você iniciá-los.
 Se quiser a janelinha "fake process" de volta, defina a variável de ambiente `FAKEGAME_SHOW_WINDOW=1` antes
 de abrir o app. Os atalhos da área de trabalho continuam abrindo a janela visível.
 
-A janela invisível é uma janela de tamanho normal, quase transparente, que não recebe cliques, fica atrás de
-tudo e não aparece na barra de tarefas, então o Discord ainda enxerga uma janela de jogo real. Se o Discord
-não detectar um jogo no seu PC, ative **Mostrar janela do jogo falso** no rodapé da barra lateral (vale para
-o próximo jogo que você iniciar).
+Por padrão a janela falsa inicia **minimizada**: é uma janela totalmente normal (o que o Discord precisa para
+mostrar o jogo como "jogando"), só não é exibida. Ative **Mostrar janela do jogo falso** no rodapé da barra
+lateral para abri-la normalmente (vale para o próximo jogo que você iniciar).
 
 ## Compilar
 
