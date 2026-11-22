@@ -52,7 +52,7 @@ as the **fake game** when it runs from a subfolder inside `games/`.
 - **Add ALL recognized games** with one click, or the **popular games pack**.
 - **Random Mode**: rotates through random games every X minutes.
 - Game **icons** from Discord, shown in the list, in the details header and in the Add Game window.
-- Fake games open a small window (needed for Discord to recognize them); it can be started minimized, but then Discord may not detect the game.
+- Each fake game opens a small themed window (needed for Discord to recognize it) with the game icon; closing it asks for confirmation.
 - Modern dark interface in **pt-BR, en and es**.
 - **Automatic update notice**: when you publish a new version, users are told and update with one click.
 
@@ -137,14 +137,14 @@ saved to disk. If a game has no icon (or you are offline) its first letter is sh
 
 ## Fake game window
 
-Fake games open their small window, which is what Discord needs to recognize them. Choosing a game only selects it; nothing opens. To stop a game use the **Stop** button or Random Mode.
-Fake games created by an older version are updated the next time you launch them. If you want the small
-"fake process" window back, set the environment variable `FAKEGAME_SHOW_WINDOW=1` before starting the app.
-Desktop shortcuts keep opening the visible window.
+Discord only reports a game as "playing" while the game has a real, normal window, so each fake game opens a small
+window. It is themed like the app, uses the app language (pt-BR, en or es), shows the game icon and how long the
+game has been active, and its title is the game name.
 
-By default the fake window opens normally, because that is the mode Discord is known to recognize as "playing".
-Turning **Show fake game window** off (bottom of the sidebar) starts it minimized, but Discord may then not detect the
-game (it applies to the next game you start).
+- To stop a game use the **Stop** button or Random Mode: the window closes with it.
+- If you close the window yourself (X / Alt+F4), it asks for confirmation first, because Discord stops recognizing
+  the game once the window is gone. If you confirm, the game shows as stopped in the app.
+- Fake games created by an older version are updated the next time you launch them.
 
 ## Build
 

@@ -1215,14 +1215,6 @@ launcherApi.onGameExited((payload = {}) => {
 document.getElementById('rbManage')?.addEventListener('click', () => openRandomModalBtn.click());
 document.getElementById('rbStop')?.addEventListener('click', () => randomToggleBtn.click());
 
-// "Show fake game window" switch (on = normal window, the default; off = starts minimized).
-const showWindowToggle = document.getElementById('showWindowToggle');
-if (showWindowToggle) {
-  showWindowToggle.addEventListener('change', async () => {
-    try { await launcherApi.setShowFakeWindow(showWindowToggle.checked); } catch { /* ignore */ }
-  });
-}
-
 // ───────────────────────────────────────────────────────────
 // Language switching
 // ───────────────────────────────────────────────────────────
@@ -1254,6 +1246,7 @@ function applyLanguage(language) {
   if (langSelect) langSelect.value = currentLanguage;
 
   applyStaticTranslations();
+  try { launcherApi.setLanguage?.(currentLanguage); } catch { /* ignore */ }
 
   // Texts that depend on the current state are drawn again.
   syncSelectedGameLaunchState();
@@ -1279,6 +1272,7 @@ if (langSelect) {
 
 (async function init() {
   applyStaticTranslations();
+  try { launcherApi.setLanguage?.(currentLanguage); } catch { /* ignore */ }
 
   // Listen for update events before anything slow (the game list sync) so none is missed.
   if (launcherApi.onUpdateAvailable) {
@@ -1310,10 +1304,6 @@ if (langSelect) {
       appVersion = String((await launcherApi.getAppVersion()) || '');
       applyStaticTranslations();
     } catch { /* version is only informative */ }
-  }
-
-  if (showWindowToggle && launcherApi.getSettings) {
-    try { showWindowToggle.checked = (await launcherApi.getSettings())?.showFakeWindow !== false; } catch { /* ignore */ }
   }
 
   // Random Mode may already be running (the window can be reloaded): show it right away.

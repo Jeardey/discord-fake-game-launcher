@@ -69,7 +69,8 @@
       "shortcutName": "Discord Fake Game Launcher",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "Discord-Fake-Game-Launcher-Setup-${version}.${ext}"
     }
   }
 }

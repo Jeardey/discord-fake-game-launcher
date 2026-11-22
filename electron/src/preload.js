@@ -38,9 +38,8 @@ contextBridge.exposeInMainWorld('launcherApi', {
     ipcRenderer.on('launcher/gameExited', (_evt, payload) => handler(payload));
   },
 
-  // Settings
-  getSettings: () => ipcRenderer.invoke('settings/get'),
-  setShowFakeWindow: (value) => ipcRenderer.invoke('settings/setShowFakeWindow', value),
+  // Language of the fake game window
+  setLanguage: (language) => ipcRenderer.invoke('app/setLanguage', language),
 
   // App info
   getAppVersion: () => ipcRenderer.invoke('app/getVersion'),

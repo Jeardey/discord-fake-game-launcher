@@ -54,7 +54,7 @@ raíz, y como **juego falso** cuando se ejecuta desde una subcarpeta dentro de `
 - **Modo aleatorio**: alterna entre juegos aleatorios cada X minutos.
 - **Iconos** de los juegos desde Discord, en la lista, en la cabecera de detalles y en la ventana de añadir
   juego.
-- Los juegos falsos abren una ventanita (necesaria para que Discord los reconozca); se puede iniciar minimizada, pero Discord puede no detectar el juego.
+- Cada juego falso abre una ventanita con el tema de la app (necesaria para que Discord lo reconozca) y el icono del juego; cerrarla pide confirmación.
 - Interfaz oscura y moderna en **pt-BR, en y es**.
 - **Aviso automático de actualización**: cuando publicas una nueva versión, los usuarios son avisados y
   actualizan con un clic.
@@ -149,15 +149,14 @@ muestra su primera letra.
 
 ## Ventana del juego falso
 
-Los juegos falsos abren su ventanita, que es lo que Discord necesita para reconocerlos. Elegir un juego solo lo selecciona; no se abre nada. Para detener un juego usa el botón
-**Dejar de jugar** o el modo aleatorio. Los juegos falsos creados por una versión anterior se actualizan la
-próxima vez que los inicies. Si quieres recuperar la pequeña ventana "fake process", define la variable de
-entorno `FAKEGAME_SHOW_WINDOW=1` antes de abrir la app. Los accesos directos del escritorio siguen abriendo
-la ventana visible.
+Discord solo muestra un juego como "jugando" mientras tiene una ventana real y normal, por eso cada juego falso
+abre una ventanita. Sigue el tema de la app, usa el idioma de la app (pt-BR, en o es), muestra el icono del
+juego y cuánto tiempo lleva activo, y su título es el nombre del juego.
 
-Por defecto la ventana falsa se abre normalmente, porque es el modo que Discord reconoce como "jugando". Si
-desactivas **Mostrar ventana del juego falso** (al pie de la barra lateral), inicia minimizada, pero Discord puede
-no detectar el juego (se aplica al próximo juego que inicies).
+- Para detener un juego usa el botón **Dejar de jugar** o el modo aleatorio: la ventana se cierra con él.
+- Si cierras la ventana tú mismo (X / Alt+F4), pide confirmación antes, porque Discord deja de reconocer el
+  juego cuando la ventana desaparece. Si confirmas, el juego aparece como detenido en la app.
+- Los juegos falsos creados por una versión anterior se actualizan la próxima vez que los inicies.
 
 ## Compilar
 

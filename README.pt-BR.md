@@ -52,7 +52,7 @@ O mesmo executável falso funciona como **launcher** quando aberto pelo atalho o
 - **Adicione TODOS os jogos reconhecidos** com um clique, ou o **pacote de jogos populares**.
 - **Modo aleatório**: alterna entre jogos aleatórios a cada X minutos.
 - **Ícones** dos jogos vindos do Discord, na lista, no cabeçalho de detalhes e na janela de adicionar jogo.
-- Os jogos falsos abrem uma janelinha (necessária para o Discord reconhecê-los); dá para iniciá-la minimizada, mas o Discord pode não detectar o jogo.
+- Cada jogo falso abre uma janelinha com o tema do app (necessária para o Discord reconhecê-lo) e o ícone do jogo; fechá-la pede confirmação.
 - Interface escura e moderna em **pt-BR, en e es**.
 - **Aviso automático de atualização**: quando você publica uma nova versão, os usuários são avisados e
   atualizam com um clique.
@@ -140,14 +140,14 @@ memória, nada é salvo no disco. Se um jogo não tem ícone (ou você está off
 
 ## Janela do jogo falso
 
-Os jogos falsos abrem a janelinha deles, que é o que o Discord precisa para reconhecê-los. Escolher um jogo só o seleciona; nada abre. Para parar um jogo use o botão **Parar** ou o modo
-aleatório. Jogos falsos criados por uma versão antiga são atualizados na próxima vez que você iniciá-los.
-Se quiser a janelinha "fake process" de volta, defina a variável de ambiente `FAKEGAME_SHOW_WINDOW=1` antes
-de abrir o app. Os atalhos da área de trabalho continuam abrindo a janela visível.
+O Discord só mostra um jogo como "jogando" enquanto ele tem uma janela real e normal, por isso cada jogo falso abre
+uma janelinha. Ela segue o tema do app, usa o idioma do app (pt-BR, en ou es), mostra o ícone do jogo e há quanto
+tempo ele está ativo, e o título dela é o nome do jogo.
 
-Por padrão a janela falsa abre normalmente, porque é o modo que o Discord reconhece como "jogando". Desligar
-**Mostrar janela do jogo falso** (rodapé da barra lateral) inicia a janela minimizada, mas o Discord pode não
-detectar o jogo (vale para o próximo jogo que você iniciar).
+- Para parar um jogo use o botão **Parar** ou o modo aleatório: a janela fecha junto.
+- Se você fechar a janela por conta própria (X / Alt+F4), ela pede confirmação antes, porque o Discord deixa de
+  reconhecer o jogo quando a janela some. Se você confirmar, o jogo aparece como parado no app.
+- Jogos falsos criados por uma versão antiga são atualizados na próxima vez que você iniciá-los.
 
 ## Compilar
 

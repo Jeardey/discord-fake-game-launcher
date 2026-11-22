@@ -13,22 +13,25 @@ const { createIconResolver } = require('./game-icons');
 
 const DISCORD_DETECTABLE_URL = 'https://discord.com/api/applications/detectable';
 
-// Fake games open their normal window by default (the only mode Discord is known to recognize).
-// Turning "Show fake game window" off starts the window minimized instead.
-let appSettings = null; // { showFakeWindow: boolean }
-
-async function getSettings() {
-  if (!appSettings) {
-    const saved = await readJsonIfExists(path.join(app.getPath('userData'), 'settings.json'), {});
-    // On by default: Discord only recognizes the game while its (normal) window is open.
-    appSettings = { showFakeWindow: !(saved && saved.showFakeWindow === false) };
-  }
-  return appSettings;
+// Language of the fake game window (pt-BR / en / es). The app window tells us its language.
+function normalizeUiLanguage(value) {
+  const v = String(value || '').toLowerCase();
+  if (v.startsWith('pt')) return 'pt-BR';
+  if (v.startsWith('es')) return 'es';
+  return 'en';
 }
 
-async function shouldHideFakeWindows() {
-  if (process.env.FAKEGAME_SHOW_WINDOW === '1') return false;
-  return !(await getSettings()).showFakeWindow;
+let uiLanguage = null;
+function getUiLanguage() {
+  return uiLanguage || normalizeUiLanguage(app.getLocale());
+}
+
+// Resolves to '' instead of waiting too long, so starting a game is never delayed by the icon lookup.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => ''),
+    new Promise((resolve) => setTimeout(() => resolve(''), ms))
+  ]);
 }
 
 // In-memory cache to avoid re-reading/parsing large gamelist.json on every search.
@@ -721,7 +724,10 @@ async function launchFakeGame(game) {
   const displayName = String(game?.name || path.basename(destExePath));
 
   // "--hidden" is understood by the current DummyGame build; older builds just ignore it.
-  const spawnArgs = (await shouldHideFakeWindows()) ? [displayName, '--hidden'] : [displayName];
+  // The fake window shows the game icon and uses the app language.
+  const iconUrl = await withTimeout(iconResolver.resolve(game?.appId), 1500);
+  const spawnArgs = [displayName, `--lang=${getUiLanguage()}`];
+  if (iconUrl) spawnArgs.push(`--icon-url=${iconUrl}`);
 
   const proc = spawn(destExePath, spawnArgs, {
     cwd: workingDirectory,
@@ -995,16 +1001,9 @@ ipcMain.handle('update/remindLater', async () => {
 
 ipcMain.handle('app/getVersion', () => app.getVersion());
 
-ipcMain.handle('settings/get', async () => ({ ...(await getSettings()) }));
-
-ipcMain.handle('settings/setShowFakeWindow', async (_evt, value) => {
-  const settings = await getSettings();
-  settings.showFakeWindow = Boolean(value);
-  try {
-    ensureDirSync(app.getPath('userData'));
-    await writeJson(path.join(app.getPath('userData'), 'settings.json'), settings);
-  } catch { /* the choice still applies until the app closes */ }
-  return { ...settings };
+ipcMain.handle('app/setLanguage', (_evt, language) => {
+  uiLanguage = normalizeUiLanguage(language);
+  return uiLanguage;
 });
 
 ipcMain.handle('update/check', async () => checkForUpdatesNow());

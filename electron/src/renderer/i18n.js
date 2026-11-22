@@ -81,8 +81,6 @@
       'random.manage': 'Settings',
       'random.pickingNext': 'Picking…',
       'random.manualLocked': 'Random Mode is on. Turn it off to launch games manually.',
-      'settings.showWindow': 'Show fake game window',
-      'settings.showWindowHint': 'Recommended: on. Discord recognizes the game while its window is open. If turned off, the window starts minimized and Discord may not detect the game.',
 
       'update.title': 'Update Available',
       'update.newVersion': 'New version',
@@ -205,8 +203,6 @@
       'random.manage': 'Ajustes',
       'random.pickingNext': 'Sorteando…',
       'random.manualLocked': 'O modo aleatório está ativo. Desative-o para iniciar jogos manualmente.',
-      'settings.showWindow': 'Mostrar janela do jogo falso',
-      'settings.showWindowHint': 'Recomendado: ligado. O Discord reconhece o jogo com a janela aberta. Desligado, a janela inicia minimizada e o Discord pode não detectar o jogo.',
 
       'update.title': 'Atualização disponível',
       'update.newVersion': 'Nova versão',
@@ -329,8 +325,6 @@
       'random.manage': 'Ajustes',
       'random.pickingNext': 'Sorteando…',
       'random.manualLocked': 'El modo aleatorio está activo. Desactívalo para iniciar juegos manualmente.',
-      'settings.showWindow': 'Mostrar ventana del juego falso',
-      'settings.showWindowHint': 'Recomendado: activado. Discord reconoce el juego con la ventana abierta. Si lo desactivas, la ventana inicia minimizada y Discord puede no detectar el juego.',
 
       'update.title': 'Actualización disponible',
       'update.newVersion': 'Nueva versión',
